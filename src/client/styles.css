@@ -11,3 +11,11 @@ html[data-theme="light"]{color-scheme:light;--bg:#f0f4f8;--bar:#ffffff;--surface
 .dialog-host{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:#000a;backdrop-filter:blur(5px)}.dialog-host[hidden]{display:none}.dialog-box{width:min(520px,calc(100vw - 35px));max-height:80vh;overflow:auto;border:1px solid var(--edge);background:var(--panel);border-radius:12px;box-shadow:0 20px 80px #0008;padding:16px 20px 22px}.dialog-header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--edge);margin-bottom:13px}.dialog-header h2{font-size:16px}.dialog-item{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--edge);padding:12px 0;font-size:11px;gap:9px}.dialog-item button,.export-options button{background:var(--panel2);border:1px solid var(--edge);color:var(--text);padding:8px 12px;border-radius:6px;font-size:11px}.export-options{display:grid;gap:10px;padding-top:12px}.busy-overlay{opacity:.6;pointer-events:none}
 @media(max-width:1100px){.left-panel{flex-basis:200px}.right-panel{flex-basis:245px}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app-version{display:none}}@media(max-width:790px){.left-panel{display:none}.right-panel{flex-basis:215px}.viewport-top{padding:12px}.view-bottom .camera-hint{display:none}.lower-panel{height:190px}.topbar{padding:0 8px}.top-actions{gap:3px}.top-actions .light-button{padding:7px}.brand small{display:none}.frame-readout{display:none}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+#sgeoViewport{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none}
+#viewport{z-index:1}
+.view-toolbar{z-index:3}
+.view-bottom,.axis-badge{z-index:2}
+.transport #playMode{max-width:98px}
+.view-toolbar button:focus-visible{outline:2px solid #82d8ff}
+@media(max-width:900px){#playMode{display:none}.view-toolbar button{padding:6px}}

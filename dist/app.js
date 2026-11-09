@@ -1,3 +1,4 @@
+import { SgeoViewport } from "./sgeo_view.js";
 const $ = (id) => { const obj = document.getElementById(id); if (!obj)
     throw Error(`Missing ${id}`); return obj; };
 function e(tag, cls = '', text = '') { const x = document.createElement(tag); if (cls)
@@ -85,6 +86,27 @@ let hoverIndex = -1;
 let ortho = false;
 let grid = true;
 let worldsheet = false;
+let numericalConfiguration = null;
+let activeSimulation = 'classical';
+let nativeImported = false;
+let nativeMode = false;
+let nativeScene = null;
+let nativeSerial = 0;
+let lastPanelUpdate = 0;
+let interpolatedFrame = null;
+let playDirection = 1;
+let completedLoops = 0;
+const sgeoCanvas = $('sgeoViewport');
+let gpu = null;
+try {
+    gpu = new SgeoViewport(sgeoCanvas);
+}
+catch (error) {
+    console.warn('WebGL2 unavailable; using 2D fallback', error);
+}
+if (gpu?.supported) {
+    sgeoCanvas.style.display = 'block';
+}
 const viewport = $('viewport');
 const vctx = viewport.getContext('2d');
 if (!vctx)
@@ -100,6 +122,12 @@ function applyPreset(p) {
     savedRevision = 0;
     frames = [];
     frameIndex = 0;
+    activeSimulation = 'classical';
+    numericalConfiguration = null;
+    nativeScene = null;
+    nativeImported = false;
+    nativeSerial++;
+    interpolatedFrame = null;
     sweepResults = null;
     convergenceResults = null;
     dualResults = null;
@@ -214,9 +242,15 @@ function modeControls() {
 }
 let computeTimer = 0;
 function computeSoon(delay = 250) { window.clearTimeout(computeTimer); computeTimer = window.setTimeout(() => { void compute(); }, delay); }
-function touch() { revision++; clearError(); computeSoon(); }
+function touch() { revision++; nativeScene = null; nativeImported = false; nativeSerial++; clearError(); computeSoon(); }
 async function compute() {
     const serial = ++revision;
+    activeSimulation = 'classical';
+    numericalConfiguration = null;
+    nativeScene = null;
+    nativeImported = false;
+    nativeSerial++;
+    interpolatedFrame = null;
     playing = false;
     setText('playBtn', '▶');
     setText('statusText', 'Computing');
@@ -226,6 +260,8 @@ async function compute() {
             return;
         frames = newFrames;
         frameIndex = 0;
+        startPlay = 0;
+        playDirection = 1;
         const tl = $('timeline');
         tl.max = String(frames.length - 1);
         tl.value = '0';
@@ -250,8 +286,8 @@ function updateVisible() {
     if (f) {
         setText('timeValue', `τ = ${f.time.toFixed(2)}`);
         setText('frameInfo', `FRAME ${frameIndex + 1} / ${frames.length}`);
-        const r = f.diagnostics.level_matching_residual;
-        setText('validityText', `${f.status.replaceAll('_', ' ')} · constraint ${num(r, 3)}`);
+        const r = f.diagnostics.level_matching_residual ?? f.diagnostics.constraint_tautau_rms ?? f.diagnostics.relative_energy_drift;
+        setText('validityText', `${f.status.replaceAll('_', ' ')} · residual ${num(r, 3)}`);
         setText('coordLabel', f.projection.join(' · '));
         setText('outputTypeText', f.projection_kind === 'parameter_space_diagram' ? 'WORLDSHEET PARAMETER DIAGRAM' : '3D TARGET PROJECTION');
     }
@@ -259,27 +295,146 @@ function updateVisible() {
         setText('validityText', 'No valid simulation result');
     }
     drawScene();
-    if (['results', 'charts', 'compare'].includes(activeTab))
+    if (['results', 'charts', 'compare'].includes(activeTab) && performance.now() - lastPanelUpdate > 150) {
+        lastPanelUpdate = performance.now();
         renderPanel();
-}
-function setFrame(index) { frameIndex = Math.max(0, Math.min(frames.length - 1, Math.floor(index))); ($('timeline')).value = String(frameIndex); updateVisible(); }
-function playTick(now) {
-    requestAnimationFrame(playTick);
-    if (playing && frames.length) {
-        if (!lastTick)
-            lastTick = now;
-        const elapsed = (now - lastTick) / 1000;
-        lastTick = now;
-        const speed = Number(inputValue('speedSelect'));
-        startPlay += elapsed * speed;
-        const seconds = frames[frames.length - 1].time || 1;
-        const k = Math.floor((startPlay % seconds) / seconds * (frames.length - 1));
-        if (k !== frameIndex)
-            setFrame(k);
     }
 }
-function play() { if (!frames.length)
-    return; playing = !playing; lastTick = 0; startPlay = frames[frameIndex].time; setText('playBtn', playing ? '❚❚' : '▶'); }
+function setFrame(index) {
+    frameIndex = Math.max(0, Math.min(frames.length - 1, Math.floor(index)));
+    interpolatedFrame = null;
+    startPlay = frames[frameIndex]?.time ?? 0;
+    ($('timeline')).value = String(frameIndex);
+    if (nativeMode && !nativeImported && !playing)
+        void loadNativeSnapshot();
+    updateVisible();
+}
+function blendAt(t) {
+    if (!frames.length)
+        return null;
+    if (frames.length === 1 || t <= frames[0].time)
+        return frames[0];
+    if (t >= frames[frames.length - 1].time)
+        return frames[frames.length - 1];
+    let lo = 0, hi = frames.length - 1;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (frames[mid].time <= t)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    const a = frames[lo], b = frames[hi];
+    const fraction = (t - a.time) / Math.max(1e-9, b.time - a.time);
+    if (a.geometry.length !== b.geometry.length)
+        return a;
+    const points = a.geometry.map((p, i) => p.map((v, j) => v + (b.geometry[i][j] - v) * fraction));
+    return { ...a, time: t, geometry: points };
+}
+function playTick(now) {
+    requestAnimationFrame(playTick);
+    if (!playing || !frames.length || document.hidden) {
+        lastTick = now;
+        return;
+    }
+    if (!lastTick)
+        lastTick = now;
+    const elapsed = Math.max(0, Math.min(.12, (now - lastTick) / 1000));
+    lastTick = now;
+    const speed = Number(inputValue('speedSelect'));
+    if (!Number.isFinite(speed) || speed <= 0)
+        return;
+    const first = frames[0].time, last = frames[frames.length - 1].time;
+    const span = Math.max(.001, last - first);
+    const mode = inputValue('playMode');
+    startPlay += elapsed * speed * playDirection;
+    if (mode === 'pingpong') {
+        if (startPlay > last) {
+            startPlay = last - (startPlay - last) % span;
+            playDirection = -1;
+            completedLoops++;
+        }
+        else if (startPlay < first) {
+            startPlay = first + (first - startPlay) % span;
+            playDirection = 1;
+            completedLoops++;
+        }
+    }
+    else if (startPlay >= last) {
+        if (mode === 'once') {
+            startPlay = last;
+            playing = false;
+            setText('playBtn', '▶');
+        }
+        else {
+            startPlay = first + (startPlay - first) % span;
+            completedLoops++;
+        }
+    }
+    else if (startPlay < first) {
+        startPlay = first;
+    }
+    interpolatedFrame = blendAt(startPlay);
+    let lo = 0, hi = frames.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (frames[mid].time <= startPlay)
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    if (lo !== frameIndex) {
+        frameIndex = lo;
+        ($('timeline')).value = String(frameIndex);
+        updateVisible();
+    }
+    else {
+        setText('timeValue', `τ = ${startPlay.toFixed(2)}`);
+        drawScene();
+    }
+}
+function play() {
+    if (!frames.length)
+        return;
+    playing = !playing;
+    lastTick = 0;
+    if (playing) {
+        nativeScene = null;
+        nativeSerial++;
+        nativeImported = false;
+        if (startPlay >= frames[frames.length - 1].time)
+            startPlay = 0;
+    }
+    else if (nativeMode)
+        void loadNativeSnapshot();
+    setText('playBtn', playing ? '❚❚' : '▶');
+}
+async function loadNativeSnapshot() {
+    if (!nativeMode || nativeImported || !formats.sgeo || playing || !frames.length)
+        return;
+    const serial = ++nativeSerial;
+    const current = frames[frameIndex];
+    setText('statusText', 'Validating SGEO snapshot…');
+    try {
+        const result = await request('/sgeo/scene', { configuration: config, time: current.time, worldsheet });
+        if (serial !== nativeSerial || !nativeMode || playing)
+            return;
+        if (result.format !== 'slai.sgeo' || !result.valid_native_document)
+            throw Error('Native SGEO scene validation failed.');
+        nativeScene = result;
+        setText('statusText', `SGEO validated · ${result.segments.length} segments`);
+        drawScene();
+    }
+    catch (err) {
+        if (serial !== nativeSerial)
+            return;
+        nativeMode = false;
+        nativeScene = null;
+        $('nativeBtn').classList.remove('active');
+        warn(err);
+        drawScene();
+    }
+}
 function fit() {
     if (!frames.length) {
         zoom = 1;
@@ -356,7 +511,23 @@ function drawScene() {
     ctx.clearRect(0, 0, w, h);
     if (!frames.length)
         return;
-    const current = frames[frameIndex];
+    const current = interpolatedFrame ?? frames[frameIndex];
+    if (gpu?.supported) {
+        gpu.draw(current, frames, projected, fittedScale, worldsheet, grid, nativeMode && !playing ? nativeScene : null);
+        if (hoverIndex >= 0 && hoverIndex < current.geometry.length) {
+            const v = current.geometry[hoverIndex], pt = projected(v, w, h);
+            ctx.fillStyle = '#e7f7ff';
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#162d3e';
+            ctx.fillRect(Math.min(w - 165, pt.x + 10), Math.max(10, pt.y - 34), 154, 23);
+            ctx.font = '11px Consolas,monospace';
+            ctx.fillStyle = '#bde6f5';
+            ctx.fillText(v.map(n => n.toFixed(2)).join(', '), Math.min(w - 160, pt.x + 15), Math.max(25, pt.y - 19));
+        }
+        return;
+    }
     if (grid) {
         const s = Math.max(.1, fittedScale);
         const center = fittedCenter;
@@ -419,8 +590,8 @@ function renderPanel() {
         const d = f.diagnostics;
         const cards = e('div', 'metric-grid');
         for (const [name, value, cls] of [
-            ['GAUGE-FIXED ENERGY', num(d.energy), ''], ['GLOBAL CONSTRAINT', num(d.level_matching_residual, 3), Number(d.level_matching_residual) < 1e-8 ? 'good' : 'warn'],
-            ['MODEL STATUS', f.status.replaceAll('_', ' '), f.status.startsWith('physical') ? 'good' : 'warn'], ['STRING TENSION', num(d.tension ?? 1 / (2 * Math.PI * config.alpha_prime)), '']
+            ['ENERGY / ON-SHELL ACTION', num(d.energy ?? d.polyakov_lagrangian_integral_sigma), ''], ['CONSTRAINT / DRIFT', num(d.level_matching_residual ?? d.constraint_tautau_rms ?? d.relative_energy_drift, 3), Number(d.level_matching_residual ?? d.constraint_tautau_rms ?? d.relative_energy_drift) < .005 ? 'good' : 'warn'],
+            ['MODEL STATUS', f.status.replaceAll('_', ' '), f.status.startsWith('physical') || f.status.startsWith('nonlinear') ? 'good' : 'warn'], ['STRING TENSION', num(d.tension ?? 1 / (2 * Math.PI * config.alpha_prime)), '']
         ]) {
             const card = e('div', 'metric-card');
             card.append(e('small', '', name), e('strong', cls, value));
@@ -449,7 +620,10 @@ function renderPanel() {
         ];
         for (const x of formulas)
             host.appendChild(e('code', 'formula', x));
-        if (f) {
+        if (f && activeSimulation !== 'classical') {
+            host.appendChild(e('p', 'note-row', `Current numerical solver ${f.solver}: ${f.model_assumptions}. Equations and conservation diagnostics are reported in the Dynamics tab.`));
+        }
+        if (f && activeSimulation === 'classical') {
             const a = f.diagnostics;
             host.appendChild(e('p', 'note-row', `Nambu–Goto on-shell density integrated over σ: ${num(a.ng_on_shell_density_integral_sigma)} · Polyakov conformal-gauge on-shell density: ${num(a.polyakov_on_shell_density_integral_sigma)} · difference: ${num(a.on_shell_action_density_difference)}. These are restricted on-shell integrands, not two independent general solvers.`));
         }
@@ -473,18 +647,28 @@ function renderPanel() {
         comparePanel(host);
     else if (activeTab === 'advanced')
         advancedPanel(host);
+    else if (activeTab === 'dynamics')
+        dynamicsPanel(host);
 }
 function advancedPanel(host) {
     host.append(e('h3', 'panel-heading', 'Finite theoretical calculations · clearly bounded models'));
-    host.append(e('p', 'note-row', 'These are separate mathematical calculators: no quantum wavefunction trajectories, no full BRST cohomology, and no general D-brane or Calabi–Yau dynamics.'));
+    host.append(e('p', 'note-row', 'Finite validated exact/reduced calculations: free RNS spectra, free CFT vertex correlators, finite Fock characters, BRST prerequisite checks, affine Dp DBI, and special Calabi–Yau geometries. Full interacting QFT/BRST cohomology and generic Ricci-flat metric solvers remain out of scope.'));
     const choice = e('select', 'tiny-select');
-    for (const [name, key] of [['Open RNS superstring spectrum', 'rns'], ['CFT / Virasoro anomaly and BRST prerequisite', 'cft'], ['Static flat Dp-brane / DBI action', 'dbrane'], ['Calabi–Yau algebraic example', 'calabi-yau']])
+    for (const [name, key] of [['Open RNS superstring spectrum', 'rns'], ['Closed RNS spectrum / level matching', 'rns-closed'], ['CFT / Virasoro central anomaly', 'cft'], ['CFT free-boson vertex correlator', 'cft-correlator'], ['CFT oscillator character', 'cft-character'], ['BRST anomaly and intercept conditions', 'brst'], ['Flat static Dp-brane / DBI', 'dbrane'], ['Affine moving Dp-brane / DBI', 'dbrane-affine'], ['Homogeneous moving Dp trajectory', 'dbrane-trajectory'], ['Calabi–Yau algebraic example', 'calabi-yau'], ['Flat torus shortest geodesic', 'cy-torus'], ['Quintic projective tangent metric', 'cy-quintic-metric']])
         choice.appendChild(new Option(name, key));
     const input = e('textarea', 'result-json');
     input.rows = 7;
     input.spellcheck = false;
     const presets = {
         rns: { sector: 'NS', dimensions: 10, alpha_prime: 1, oscillators: [{ field: 'fermion', mode: 0, axis: 1, occupation: 1 }] },
+        'rns-closed': { left_sector: 'NS', right_sector: 'NS', dimensions: 10, left: [{ field: 'fermion', mode: 0, axis: 1, occupation: 1 }], right: [{ field: 'fermion', mode: 0, axis: 1, occupation: 1 }] },
+        'cft-correlator': { alpha_prime: 1, momenta: [[1], [-1]], positions: [[0, 0], [2, 0]] },
+        'cft-character': { dimensions: 2, max_level: 12 },
+        brst: { theory: 'bosonic', dimensions: 26, intercept: 1, mode: 2 },
+        'dbrane-affine': { p: 2, dimensions: 10, velocity: [0, 0, 0.2, 0, 0, 0, 0, 0, 0] },
+        'dbrane-trajectory': { p: 2, dimensions: 10, velocity: [0, 0, 0.2, 0, 0, 0, 0, 0, 0], frames: 12, duration: 3 },
+        'cy-torus': { radius: 1, start: [0, 0, 0, 0, 0, 0], end: [6.28, 0, 0, 0, 0, 0], wave_numbers: [1, 0, 0, 0, 0, 0] },
+        'cy-quintic-metric': { complex_coordinates: [[1, 0], [-1, 0], [0, 0], [0, 0], [0, 0]] },
         cft: { theory: 'bosonic', dimensions: 26, m: 2, n: -2 },
         dbrane: { p: 2, dimensions: 10, alpha_prime: 1, tension: 1 },
         'calabi-yau': { example: 'fermat_quintic', complex_coordinates: [[1, 0], [-1, 0], [0, 0], [0, 0], [0, 0]] }
@@ -540,6 +724,99 @@ function advancedPanel(host) {
     runner.append(agentSelect, execute);
     host.append(task, runner);
     host.append(e('p', 'note-row', 'The agent task must follow the installed SLAI Agent API; unsupported operations report errors. No AI-generated response is accepted as a solver result.'));
+}
+async function activateNumericalSimulation(payload) {
+    const solved = await request('/advanced/simulate', payload);
+    if (!solved.length)
+        throw Error('Numerical solver returned no frames.');
+    revision++;
+    nativeScene = null;
+    nativeImported = false;
+    nativeSerial++;
+    frames = solved;
+    frameIndex = 0;
+    playing = false;
+    setText('playBtn', '▶');
+    startPlay = solved[0].time;
+    interpolatedFrame = null;
+    activeSimulation = String(payload.model);
+    numericalConfiguration = clone(payload);
+    autoFitAfterCompute = true;
+    $('timeline').max = String(solved.length - 1);
+    $('timeline').value = '0';
+    fit();
+    setText('statusText', 'Numerical evolution complete');
+    setText('modelBadge', activeSimulation.toUpperCase().replaceAll('_', ' '));
+    setText('modelTypeText', activeSimulation.toUpperCase().replaceAll('_', ' '));
+    updateVisible();
+    return solved;
+}
+function dynamicsPanel(host) {
+    host.append(e('h3', 'panel-heading', 'Numerical worldsheet dynamics · independently evolved embeddings'));
+    host.append(e('p', 'note-row', 'Polyakov evolves every X^μ with the target-space Christoffel connection in conformal worldsheet gauge (flat or exponential FRW). Nambu–Goto evolves a nonlinear Hamiltonian in flat or FRW static gauge. D1 scalar DBI adds a fixed electric background; gauge-field equations are not solved. All constraints and energy errors are reported, not silently projected away.'));
+    const choose = e('select', 'tiny-select');
+    for (const [label, value] of [['Covariant Polyakov · flat / FRW', 'polyakov'], ['Nonlinear Nambu–Goto · static gauge', 'nambu_goto'], ['D1 DBI scalar wave · prescribed electric background', 'dbi_d1']])
+        choose.add(new Option(label, value));
+    const kind = e('select', 'tiny-select');
+    kind.append(new Option('Open endpoints', 'open'), new Option('Closed / winding-one', 'closed'));
+    kind.value = 'closed';
+    const fields = e('div', 'data-row');
+    const inputs = {};
+    for (const [key, label, value, min, max, step] of [['points', 'Points', '96', '32', '512', '16'], ['frames', 'Frames', '80', '2', '160', '10'],
+        ['duration', 'Duration τ', '4', '0.02', '20', '0.2'], ['amplitude', 'Amplitude', '0.4', '0', '2', '0.1'],
+        ['hubble', 'FRW H', '0', '-0.2', '0.2', '0.01'], ['electric', '2πα′F₀₁', '0', '-0.8', '0.8', '0.05']]) {
+        const labelEl = e('label', 'field-line', label);
+        const input = e('input');
+        input.type = 'number';
+        input.value = value;
+        input.min = min;
+        input.max = max;
+        input.step = step;
+        inputs[key] = input;
+        labelEl.append(input);
+        fields.append(labelEl);
+    }
+    const output = e('pre', 'result-json', 'Run a solver to inspect constraints and nonlinear evolution.');
+    const go = e('button', '', 'Evolve nonlinear PDE');
+    go.onclick = async () => {
+        if (playing) {
+            playing = false;
+            setText('playBtn', '▶');
+        }
+        setText('statusText', 'Integrating nonlinear equations…');
+        go.disabled = true;
+        try {
+            const model = choose.value;
+            const payload = { model, kind: kind.value, alpha_prime: config.alpha_prime };
+            for (const [name, el] of Object.entries(inputs))
+                payload[name] = Number(el.value);
+            if (model === 'polyakov')
+                payload.dimensions = Math.min(config.dimensions, 8);
+            const solved = await activateNumericalSimulation(payload);
+            output.textContent = JSON.stringify({ solver: model, frames: solved.length, initial: solved[0].diagnostics,
+                final: solved[solved.length - 1].diagnostics, assumptions: solved[0].model_assumptions }, null, 2);
+        }
+        catch (err) {
+            warn(err);
+            output.textContent = 'Numerical calculation failed; inspect the error banner.';
+        }
+        finally {
+            go.disabled = false;
+        }
+    };
+    const toolbar = e('div', 'data-row');
+    toolbar.append(choose, kind, go);
+    host.append(toolbar, fields, output);
+    if (activeSimulation !== 'classical' && frames.length) {
+        const metric = activeSimulation === 'polyakov' ? 'constraint_tautau_rms' : 'relative_energy_drift';
+        host.append(e('h3', 'panel-heading', activeSimulation === 'polyakov' ? 'Virasoro constraint residual over time' : 'Energy change diagnostic over time'));
+        const chart = e('canvas', 'chart-canvas');
+        host.append(chart);
+        requestAnimationFrame(() => plotChart(chart, frames.map(f => [f.time, Number(f.diagnostics[metric]) || 0]), '#4db9e7'));
+        host.append(e('p', 'note-row', activeSimulation === 'polyakov' ? 'RMS residual is dimensionless and normalized by local worldsheet scale. This does not establish exact constraint preservation.' :
+            'For FRW, background time-dependence means energy conservation does not hold. The plotted quantity is change relative to initial energy, not necessarily integration error.'));
+    }
+    host.append(e('p', 'note-row', 'Playback interpolates sampled states for display only. It never substitutes interpolation for integration, and no assertion of generic background/brane completeness is made.'));
 }
 function plotChart(chart, data, color) {
     const cx = chart.getContext('2d');
@@ -774,7 +1051,16 @@ async function openLibrary() {
                     renderPresets();
                     closeDialog();
                     autoFitAfterCompute = true;
-                    computeSoon(0);
+                    if (data.numerical) {
+                        try {
+                            await activateNumericalSimulation(data.numerical);
+                        }
+                        catch (error) {
+                            warn(error);
+                        }
+                    }
+                    else
+                        computeSoon(0);
                 }
                 catch (err) {
                     warn(err);
@@ -803,7 +1089,7 @@ async function save() {
     if (!name)
         return;
     try {
-        const saved = await request('/experiments', { id: savedId, expected_revision: savedRevision, title: name, configuration: config, quantum });
+        const saved = await request('/experiments', { id: savedId, expected_revision: savedRevision, title: name, configuration: config, quantum, numerical: numericalConfiguration });
         savedId = saved.id;
         savedRevision = saved.revision;
         title = saved.title;
@@ -852,10 +1138,83 @@ function importDialog() {
         }
     };
     wrap.appendChild(btn);
+    const viewBtn = e('button', '', 'Open .sgeo in WebGL viewport');
+    viewBtn.onclick = async () => {
+        const file = input.files?.[0];
+        if (!file || !file.name.toLowerCase().endsWith('.sgeo')) {
+            result.textContent = 'Choose an .sgeo file first.';
+            return;
+        }
+        if (!gpu?.supported) {
+            result.textContent = 'WebGL2 is required to display native SGEO surfaces (the 2D physics viewer remains available).';
+            return;
+        }
+        if (file.size > 6 * 1024 * 1024) {
+            result.textContent = 'SGEO scene exceeds 6 MB import limit.';
+            return;
+        }
+        try {
+            const response = await fetch('/api/import/sgeo/scene', { method: 'POST', headers: { [marker]: '1', 'Content-Type': 'application/octet-stream' }, body: await file.arrayBuffer(), credentials: 'same-origin' });
+            const data = await response.json();
+            if (!response.ok || !data.ok || !data.data?.valid_native_document)
+                throw Error(data.error?.message || 'Native SGEO scene could not be loaded.');
+            nativeMode = true;
+            nativeImported = true;
+            playing = false;
+            setText('playBtn', '▶');
+            nativeSerial++;
+            nativeScene = data.data;
+            $('nativeBtn').classList.add('active');
+            closeDialog();
+            setText('statusText', `Imported validated SGEO · ${nativeScene.segments.length} segments`);
+            drawScene();
+        }
+        catch (err) {
+            result.textContent = String(err);
+        }
+    };
+    wrap.appendChild(viewBtn);
     dialog('Inspect native geometry', wrap);
 }
 function exportDialog() {
     const wrap = e('div', 'export-options');
+    if (activeSimulation !== 'classical') {
+        const description = e('p', 'note-row', `The active ${activeSimulation} evolution is independent of the Fourier configuration. Fourier SGEO/PDF/SLDC reports would not represent this nonlinear result and are intentionally disabled here.`);
+        wrap.appendChild(description);
+        const payload = () => ({ application: 'StringLab', schema_version: 1, solver: activeSimulation, solver_configuration: clone(numericalConfiguration),
+            frames: clone(frames), solver_assumptions: frames[0]?.model_assumptions ?? '',
+            fidelity: 'Sampled numerical embedding and diagnostics; interpolation is display-only; no independent solver certification.' });
+        for (const [name, filename, format] of [['Complete numerical trajectory · JSON', 'stringlab_numerical_trajectory.json', 'json'],
+            ['Numerical diagnostics · CSV', 'stringlab_numerical_diagnostics.csv', 'csv']]) {
+            const button = e('button', '', name);
+            button.onclick = () => {
+                let content, mime;
+                if (format === 'json') {
+                    content = JSON.stringify(payload(), null, 2) + '\n';
+                    mime = 'application/json;charset=utf-8';
+                }
+                else {
+                    const metricKeys = [...new Set(frames.flatMap(f => Object.keys(f.diagnostics)))].sort();
+                    const escape = (x) => '"' + String(x ?? '').replaceAll('"', '""') + '"';
+                    content = [['frame', 'time', 'solver', ...metricKeys].map(escape).join(','), ...frames.map((f, index) => [index, f.time, f.solver, ...metricKeys.map(k => typeof f.diagnostics[k] === 'number' ? f.diagnostics[k] : JSON.stringify(f.diagnostics[k] ?? null))].map(escape).join(','))].join('\r\n') + '\r\n';
+                    mime = 'text/csv;charset=utf-8';
+                }
+                const url = URL.createObjectURL(new Blob([content], { type: mime }));
+                const a = e('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 2000);
+                closeDialog();
+                setText('statusText', `Exported ${filename}`);
+            };
+            wrap.appendChild(button);
+        }
+        dialog('Export numerical solver results', wrap);
+        return;
+    }
     for (const [label, path, name] of [
         ...(formats.sgeo ? [['Native SGEO · projected 3D string', '/export/sgeo', 'stringlab_projection.sgeo'], ['Native SGEO · worldsheet mesh', '/export/sgeo-worldsheet', 'stringlab_worldsheet.sgeo']] : []),
         ...(formats.sdrw ? [['Native SDRW · editable coordinate diagram', '/export/sdrw', 'stringlab_diagram.sdrw']] : []),
@@ -932,7 +1291,36 @@ function registerInputControls() {
     $('fitBtn').addEventListener('click', () => fit());
     $('orthoBtn').addEventListener('click', () => { ortho = !ortho; $('orthoBtn').classList.toggle('active', ortho); drawScene(); });
     $('gridBtn').addEventListener('click', () => { grid = !grid; $('gridBtn').classList.toggle('active', grid); drawScene(); });
-    $('worldsheetBtn').addEventListener('click', () => { worldsheet = !worldsheet; $('worldsheetBtn').classList.toggle('active', worldsheet); drawScene(); });
+    $('worldsheetBtn').addEventListener('click', () => { worldsheet = !worldsheet; $('worldsheetBtn').classList.toggle('active', worldsheet); if (nativeMode && !nativeImported && !playing)
+        void loadNativeSnapshot(); drawScene(); });
+    $('nativeBtn').addEventListener('click', () => {
+        if (!gpu?.supported) {
+            errorText('WebGL2 is unavailable; the software canvas fallback remains active.');
+            return;
+        }
+        if (!formats.sgeo) {
+            errorText('Native SGEO scene snapshots require the SLAI SGEO library.');
+            return;
+        }
+        if (activeSimulation !== 'classical') {
+            errorText('Canonical SGEO snapshot export currently supports the Fourier experiment only; nonlinear frames use the same WebGL live renderer.');
+            return;
+        }
+        nativeMode = !nativeMode;
+        nativeImported = false;
+        $('nativeBtn').classList.toggle('active', nativeMode);
+        if (nativeMode) {
+            playing = false;
+            setText('playBtn', '▶');
+            void loadNativeSnapshot();
+        }
+        else {
+            nativeSerial++;
+            nativeScene = null;
+            setText('statusText', 'WebGL live projection');
+            drawScene();
+        }
+    });
     document.querySelectorAll('.panel-tab').forEach(b => b.addEventListener('click', () => { activeTab = b.dataset.tab || 'results'; setActiveTab(); }));
     for (const [id, filter] of [['allPresets', 'all'], ['classicalPresets', 'classical'], ['quantumPresets', 'quantum']]) {
         $(id).addEventListener('click', () => { listFilter = filter; document.querySelectorAll('.filter').forEach(el => el.classList.toggle('active', el.id === id)); renderPresets(); });
@@ -940,6 +1328,10 @@ function registerInputControls() {
     $('dialogClose').addEventListener('click', closeDialog);
     $('dialogHost').addEventListener('click', ev => { if (ev.target === $('dialogHost'))
         closeDialog(); });
+    document.addEventListener('visibilitychange', () => { lastTick = 0; if (document.hidden && playing) {
+        playing = false;
+        setText('playBtn', '▶');
+    } });
     document.addEventListener('keydown', ev => {
         if (ev.key === 'Escape')
             closeDialog();
@@ -953,7 +1345,8 @@ function registerInputControls() {
             setFrame((frameIndex + 1) % frames.length);
         }
     });
-    viewport.addEventListener('pointerdown', ev => { dragging = true; viewport.setPointerCapture(ev.pointerId); lastPointer = [ev.clientX, ev.clientY]; pointerMode = ev.shiftKey ? 'pan' : 'orbit'; });
+    viewport.addEventListener('pointerdown', ev => { if (ev.button !== 0)
+        return; dragging = true; viewport.setPointerCapture(ev.pointerId); lastPointer = [ev.clientX, ev.clientY]; pointerMode = ev.shiftKey ? 'pan' : 'orbit'; });
     viewport.addEventListener('pointerup', () => { dragging = false; });
     viewport.addEventListener('pointercancel', () => { dragging = false; });
     viewport.addEventListener('pointermove', ev => {
@@ -1004,6 +1397,11 @@ async function init() {
         config = defaults.classical;
         quantum = defaults.quantum;
         applyPreset(presets[0]);
+        $('nativeBtn').title = formats.sgeo ? 'Validate current projection through SLAI SGEO writer/reader and display in WebGL2' : 'Native SGEO module unavailable in this environment';
+        if (!gpu?.supported) {
+            $('nativeBtn').setAttribute('aria-disabled', 'true');
+            setText('statusText', 'WebGL2 unavailable · 2D fallback');
+        }
     }
     catch (err) {
         warn(err);
@@ -1011,4 +1409,3 @@ async function init() {
     }
 }
 void init();
-export {};

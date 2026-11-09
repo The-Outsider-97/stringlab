@@ -54,6 +54,10 @@ def test_real_local_server_authenticated_api(tmp_path):
     class App:
         store = ExperimentStore(tmp_path / "experiments")
         pdf_available = False
+        sldc_available = False
+        class Agents:
+            def status(self): return {"available":False}
+        agents = Agents()
 
     options = server_mod.ServerOptions(token="verified-local-token", client_dir=Path(__file__).resolve().parents[1]/"dist",
                                       host="127.0.0.1", port=0,

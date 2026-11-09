@@ -8,9 +8,11 @@ from .physics import ModelError, validated, frame, series, convergence, sweep, t
 from .quantum import spectrum, t_dual, quantum_template
 from .presets import library
 from .reports import csv_series, json_snapshot, pdf_report, sldc_report
-from .interop import export_sgeo, export_sdrw, inspect_native, availability
-from .advanced import rns_spectrum, conformal_anomaly, calabi_yau_example
-from .branes import flat_dbi
+from .interop import export_sgeo, export_sdrw, inspect_native, availability, canonical_sgeo_scene, load_native_sgeo_scene
+from .advanced import rns_spectrum, conformal_anomaly, calabi_yau_example, closed_rns_spectrum, free_boson_cft, oscillator_character, brst_consistency, flat_torus_geodesic, quintic_tangent_metric
+from .branes import flat_dbi, affine_dbi, brane_trajectory
+from .covariant import polyakov_series
+from .nambu_goto import nambu_goto_series
 
 
 def build_router():
@@ -27,7 +29,9 @@ def build_router():
     @router.route("GET", "/api/status")
     def status(app, req):
         return {"name": "SLAI StringLab", "version": __version__, "model": "flat-space classical free string",
-                "quantum": "critical bosonic Fock-spectrum arithmetic", "formats": {"scientific_json": True,
+                "quantum": "finite bosonic/RNS spectra and exact CFT test calculations",
+                "extended_solvers": ["covariant_polyakov_flat_FRW", "nonlinear_nambu_goto_static_gauge", "D1_scalar_DBI_background_field"],
+                "native_renderer": "WebGL2 SGEO snapshot round-trip (when native facade available); live GPU projection otherwise", "formats": {"scientific_json": True,
                 "csv": True, "pdf": app.pdf_available, "sgeo": availability()["sgeo"], "sdrw": availability()["sdrw"], "sldc": app.sldc_available},
                 "geometry_fidelity": "SGEO/SDRW are coordinate projections, not complete higher-dimensional states.",
                 "optional_agents": app.agents.status()}
@@ -130,6 +134,10 @@ def build_router():
     def sgeo_import(app, req):
         return use(inspect_native, req.bytes(6 * 1024 * 1024), "sgeo")
 
+    @router.route("POST", "/api/import/sgeo/scene")
+    def import_sgeo_view(app, req):
+        return use(load_native_sgeo_scene, req.bytes(6 * 1024 * 1024))
+
     @router.route("POST", "/api/import/sdrw")
     def sdrw_import(app, req):
         return use(inspect_native, req.bytes(6 * 1024 * 1024), "sdrw")
@@ -163,6 +171,45 @@ def build_router():
     @router.route("POST", "/api/advanced/dbrane")
     def dbrane(app, req):
         return use(flat_dbi, req.json())
+
+    @router.route("POST", "/api/advanced/simulate")
+    def extended_simulation(app, req):
+        body=req.json()
+        if not isinstance(body,dict):raise BadRequest('Simulation options must be an object.')
+        mode=body.get('model','polyakov')
+        if mode=='polyakov':return use(polyakov_series,body)
+        if mode in ('nambu_goto','dbi_d1'):return use(nambu_goto_series,{**body,'electric':body.get('electric',0.) if mode=='dbi_d1' else 0.})
+        raise BadRequest('Supported extended dynamics: polyakov, nambu_goto, dbi_d1.')
+
+    @router.route("POST", "/api/advanced/rns-closed")
+    def rns_closed(app, req):return use(closed_rns_spectrum,req.json())
+
+    @router.route("POST", "/api/advanced/cft-correlator")
+    def cft_corr(app, req):return use(free_boson_cft,req.json())
+
+    @router.route("POST", "/api/advanced/cft-character")
+    def cft_character(app, req):return use(oscillator_character,req.json())
+
+    @router.route("POST", "/api/advanced/brst")
+    def brst(app, req):return use(brst_consistency,req.json())
+
+    @router.route("POST", "/api/advanced/cy-torus")
+    def cy_torus(app, req):return use(flat_torus_geodesic,req.json())
+
+    @router.route("POST", "/api/advanced/cy-quintic-metric")
+    def cy_quintic(app, req):return use(quintic_tangent_metric,req.json())
+
+    @router.route("POST", "/api/advanced/dbrane-affine")
+    def dbi_affine(app, req):return use(affine_dbi,req.json())
+
+    @router.route("POST", "/api/advanced/dbrane-trajectory")
+    def dbi_trajectory(app, req):return use(brane_trajectory,req.json())
+
+    @router.route("POST", "/api/sgeo/scene")
+    def native_sgeo_scene(app, req):
+        body=req.json()
+        return use(canonical_sgeo_scene,body.get('configuration'),body.get('time',0.),
+                   worldsheet=bool(body.get('worldsheet',False)))
 
     @router.route("POST", "/api/export/sldc")
     def native_document(app, req):

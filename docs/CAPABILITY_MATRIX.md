@@ -1,4 +1,4 @@
-# Capability, evidence and limitations matrix — StringLab 0.4
+# Capability, evidence and limitations matrix — StringLab 0.6
 
 Date assessed: 2026-11-09. **Status is based on implementation inspection and tests actually executed inside this creation environment**, not on a successfully launched Windows SLAI v2.4 checkout. “Tested” below means stand-alone scientific Python tests and browser DOM-only smoke checks were executed; that is distinct from native SLAI integration verification.
 
@@ -53,3 +53,22 @@ Do not translate a test that was skipped because SLAI is not installed into a su
 | Calabi–Yau | Algebraic Fermat quintic smoothness, point-inspection; flat complex 3-torus coordinate model | No Ricci-flat quintic metric, full compactification, spectrum or Hodge calculation. |
 | General covariant NG/Polyakov numerical solvers | **Not implemented** | Existing flat light-cone solution and on-shell action evaluation retained. |
 | Canonical SGEO interactive renderer | **Not integrated** | Native exports use canonical SGEO; viewport still software canvas. A reusable shared renderer contract is not present in SLAI tools. |
+
+## v0.6 — standalone scientific implementation and verification (2026-11-09)
+
+**The v0.4/v0.5 status above is historical. For current v0.6 implementation and test counts, use this table and `docs/TEST_RESULTS.md`; earlier “not implemented” entries are superseded where explicitly addressed below.**
+
+| Component | Implemented | Limits / validation debt |
+| --- | --- | --- |
+| Polyakov PDE with target connection | Actual evolution of X⁰ and Xⁱ for flat/FRW target, Neumann open / periodic closed, measured Virasoro constraints | Worldsheet conformal gauge; restricted analytic metric family; no exact discrete constraint preservation, no arbitrary g_μν input |
+| Nambu–Goto nonlinear PDE | Nonlinear canonical-momentum Hamiltonian evolution in static gauge; open Dirichlet/closed compact winding | Not arbitrary gauge, no self-intersections, no arbitrary curved metric beyond FRW |
+| D1 scalar DBI | Nonlinear DBI determinant and scalar conservation law with constant prescribed background electric F | Gauge-field equation not integrated; F≠0 FRW explicitly forbidden |
+| Dp-brane geometry | Affine induced metric, constant F, determinant/sign checks, homogeneous exact F=0 normal-velocity trajectory | No general spatially varying p-brane PDE, RR coupling or backreaction |
+| Closed RNS free spectra | NS–NS/NS–R/R–NS/R–R oscillator mass-shell and matching, NS parity projection | R zero-mode spinors/chirality and full GSO/BRST not available |
+| Free CFT computations | Euclidean plane vertex correlator and exact finite oscillator character | No modular integral, all-genus correlators or interacting field theories |
+| BRST consistency | Central anomalies and intercept necessary conditions | No Q operator, nilpotency proof or cohomology |
+| CY3 examples | Exact flat torus geodesic/eigenvalue; induced projective Fubini–Study quintic tangent metric | Quintic metric **not Ricci-flat**; no general CY metric numerical PDE |
+| Native SGEO viewer | Backend writer→reader→strict validation→public geometry extraction; WebGL2 segment/triangle consumer; imported SGEO geometry | SPADRA's project-bound ModelView is not a reusable library; live frames are not archived per repaint; no full material/selection parity |
+| Animation | Sample-time interpolation in display only, loop/once/ping-pong, hidden tab pause, 0.5×–32×, GPU trail rendering | No quantum time dynamics; no numeric integration between display frames |
+
+**Verification evidence:** Run the local tests, TS typechecker and actual Windows SLAI integration suite on your own checkout. The full SLAI native module was unavailable in the packaging sandbox; skipped native test modules remain release blockers rather than passed claims. See `docs/NUMERICAL_MODELS.md` for equations and physical restrictions.

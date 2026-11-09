@@ -10,8 +10,42 @@ from uuid import uuid4
 
 from .physics import ModelError, validated
 from .quantum import spectrum
+from .covariant import _number, _integer
 
 _ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _validated_numerical(raw: object) -> dict | None:
+    """Validate a saved numerical solver request without re-running the PDE on disk I/O."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ModelError("Numerical solver configuration must be an object.")
+    model = raw.get("model")
+    if model not in ("polyakov", "nambu_goto", "dbi_d1"):
+        raise ModelError("Unknown numerical solver model.")
+    kind = raw.get("kind")
+    if kind not in ("open", "closed"):
+        raise ModelError("Numerical endpoint topology must be open or closed.")
+    options = {"model": model, "kind": kind}
+    for key, default, low, high in (("points", 96, 32, 512), ("frames", 80, 2, 160)):
+        options[key] = _integer(raw, key, default, low, high)
+    for key, default, low, high in (("duration", 4., .02, 20.),
+             ("amplitude", .4, 0., 5.), ("alpha_prime", 1., 1e-6, 1e6),
+             ("hubble", 0., -.2, .2), ("electric", 0., -.8, .8)):
+        options[key] = _number(raw, key, default, low, high)
+    if model == "polyakov":
+        options["dimensions"] = _integer(raw, "dimensions", 4, 3, 8)
+        if options["amplitude"] < .02:
+            raise ModelError("Polyakov amplitude must be at least 0.02.")
+    elif options["amplitude"] > 1.:
+        raise ModelError("Nambu–Goto amplitude cannot exceed 1.")
+    if model == "dbi_d1":
+        if options["hubble"] != 0. and options["electric"] != 0.:
+            raise ModelError("Prescribed electric background and FRW are incompatible.")
+    else:
+        options["electric"] = 0.
+    return options
 
 
 class ExperimentStore:
@@ -33,6 +67,7 @@ class ExperimentStore:
         quantum = payload.get("quantum")
         if quantum is not None:
             spectrum(quantum)  # validates full finite oscillator configuration; do not silently alter it.
+        numerical = _validated_numerical(payload.get("numerical"))
         title = payload.get("title", "Untitled experiment")
         if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120 or any(ord(ch) < 32 for ch in title):
             raise ModelError("Title must contain 1–120 printable characters.")
@@ -50,9 +85,9 @@ class ExperimentStore:
                 raise ModelError("Revision conflict. Reload before saving to avoid overwriting a newer experiment.")
             result = {"id": uid, "schema": 1, "title": title.strip(), "revision": expected + 1,
                       "created_utc": (previous or {}).get("created_utc") or _now(),
-                      "updated_utc": _now(), "configuration": c, "quantum": quantum,
+                      "updated_utc": _now(), "configuration": c, "quantum": quantum, "numerical": numerical,
                       "provenance": {"engine": "stringlab.physics", "engine_schema": 1,
-                                     "category": "classical analytical/numerical reduced light-cone model",
+                                     "category": "covariant or nonlinear numerical PDE" if numerical else "classical analytical/numerical reduced light-cone model",
                                      "references": ["Tong2009:1.2-1.4", "Wray2011:2-3"]}}
             atomic_write_json(target, result)
             return result
@@ -65,6 +100,7 @@ class ExperimentStore:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 validated(data["configuration"])
+                _validated_numerical(data.get("numerical"))
                 if data.get("quantum") is not None:
                     spectrum(data["quantum"])
                 return data
