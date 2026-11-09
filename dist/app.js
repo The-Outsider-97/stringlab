@@ -69,7 +69,7 @@ let sweepResults = null;
 let convergenceResults = null;
 let quantumResults = null;
 let dualResults = null;
-let formats = { sgeo: false, sdrw: false, pdf: false };
+let formats = { sgeo: false, sdrw: false, pdf: false, sldc: false };
 let autoFitAfterCompute = true;
 let yaw = .45;
 let pitch = -.24;
@@ -439,7 +439,7 @@ function renderPanel() {
     else if (activeTab === 'math') {
         host.append(e('h3', 'panel-heading', 'Equations and physical-state restrictions'));
         const formulas = [
-            'Metric: ds² = −2 dX⁺dX⁻ + Σᵢ(dYᵢ)²',
+            'Metric: Δs² = −2 ΔX⁺ΔX⁻ + Σᵢ(ΔYᵢ)²',
             'Light-cone gauge: X⁺ = p⁺τ  (p⁺ > 0)',
             'Transverse equation: ∂²τYᵢ − ∂²σYᵢ = 0',
             'Virasoro: ∂σX⁻ = (∂τY · ∂σY) / p⁺',
@@ -471,6 +471,75 @@ function renderPanel() {
         analysisPanel(host);
     else if (activeTab === 'compare')
         comparePanel(host);
+    else if (activeTab === 'advanced')
+        advancedPanel(host);
+}
+function advancedPanel(host) {
+    host.append(e('h3', 'panel-heading', 'Finite theoretical calculations · clearly bounded models'));
+    host.append(e('p', 'note-row', 'These are separate mathematical calculators: no quantum wavefunction trajectories, no full BRST cohomology, and no general D-brane or Calabi–Yau dynamics.'));
+    const choice = e('select', 'tiny-select');
+    for (const [name, key] of [['Open RNS superstring spectrum', 'rns'], ['CFT / Virasoro anomaly and BRST prerequisite', 'cft'], ['Static flat Dp-brane / DBI action', 'dbrane'], ['Calabi–Yau algebraic example', 'calabi-yau']])
+        choice.appendChild(new Option(name, key));
+    const input = e('textarea', 'result-json');
+    input.rows = 7;
+    input.spellcheck = false;
+    const presets = {
+        rns: { sector: 'NS', dimensions: 10, alpha_prime: 1, oscillators: [{ field: 'fermion', mode: 0, axis: 1, occupation: 1 }] },
+        cft: { theory: 'bosonic', dimensions: 26, m: 2, n: -2 },
+        dbrane: { p: 2, dimensions: 10, alpha_prime: 1, tension: 1 },
+        'calabi-yau': { example: 'fermat_quintic', complex_coordinates: [[1, 0], [-1, 0], [0, 0], [0, 0], [0, 0]] }
+    };
+    const load = () => { input.value = JSON.stringify(presets[choice.value], null, 2); };
+    choice.onchange = load;
+    load();
+    const result = e('pre', 'result-json', 'Select a model and compute verified finite quantities.');
+    const run = e('button', '', 'Compute mathematical result');
+    run.onclick = async () => {
+        try {
+            const raw = JSON.parse(input.value);
+            const data = await request(`/advanced/${choice.value}`, raw);
+            result.textContent = JSON.stringify(data, null, 2);
+        }
+        catch (err) {
+            warn(err);
+        }
+    };
+    const actions = e('div', 'data-row');
+    actions.append(choice, run);
+    host.append(actions, input, result);
+    const bridgeHead = e('h3', 'panel-heading', 'Optional SLAI specialist agents / Shared Memory');
+    host.append(bridgeHead);
+    host.append(e('p', 'note-row', 'Publish a bounded solver diagnostic snapshot. The STEM / Verification Agents are invoked only on explicit request; they cannot alter the calculated physics. Results include the active configuration digest and revision.'));
+    const publish = e('button', '', 'Publish solver diagnostics to Shared Memory');
+    const diagnostic = e('pre', 'result-json', 'No agent request issued.');
+    publish.onclick = async () => { try {
+        const data = await request('/agents/publish', { configuration: config, time: frames[frameIndex]?.time ?? 0, revision });
+        diagnostic.textContent = JSON.stringify(data, null, 2);
+    }
+    catch (err) {
+        warn(err);
+    } };
+    host.append(publish, diagnostic);
+    const agentSelect = e('select', 'tiny-select');
+    agentSelect.append(new Option('STEM Agent', 'stem'), new Option('Verification Agent', 'verification'));
+    const task = e('textarea', 'result-json');
+    task.rows = 4;
+    task.spellcheck = false;
+    task.value = JSON.stringify({ domain: 'dimensions', operation: 'analyze', args: [], kwargs: {} }, null, 2);
+    const execute = e('button', '', 'Run selected SLAI Agent');
+    execute.onclick = async () => {
+        try {
+            const data = await request('/agents/run', { agent: agentSelect.value, configuration: config, time: frames[frameIndex]?.time ?? 0, revision, task: JSON.parse(task.value) });
+            diagnostic.textContent = JSON.stringify(data, null, 2);
+        }
+        catch (err) {
+            warn(err);
+        }
+    };
+    const runner = e('div', 'data-row');
+    runner.append(agentSelect, execute);
+    host.append(task, runner);
+    host.append(e('p', 'note-row', 'The agent task must follow the installed SLAI Agent API; unsupported operations report errors. No AI-generated response is accepted as a solver result.'));
 }
 function plotChart(chart, data, color) {
     const cx = chart.getContext('2d');
@@ -792,7 +861,8 @@ function exportDialog() {
         ...(formats.sdrw ? [['Native SDRW · editable coordinate diagram', '/export/sdrw', 'stringlab_diagram.sdrw']] : []),
         ['Scientific snapshot · JSON', '/export/json', 'stringlab_snapshot.json'],
         ['Simulation time series · CSV', '/export/csv', 'stringlab_timeseries.csv'],
-        ...(formats.pdf ? [['Reproducible scientific report · PDF', '/export/pdf', 'stringlab_report.pdf']] : [])
+        ...(formats.pdf ? [['Reproducible scientific report · PDF', '/export/pdf', 'stringlab_report.pdf']] : []),
+        ...(formats.sldc ? [['Editable scientific report · SLDC', '/export/sldc', 'stringlab_report.sldc']] : [])
     ]) {
         const b = e('button', '', label);
         b.onclick = async () => { try {
@@ -806,7 +876,7 @@ function exportDialog() {
         } };
         wrap.appendChild(b);
     }
-    wrap.appendChild(e('p', 'note-row', 'SGEO/SDRW preserve editable native 2D/3D projected geometry, not the complete higher-dimensional or time-dependent physics state. Keep the experiment JSON separately. SLDC remains unavailable.'));
+    wrap.appendChild(e('p', 'note-row', 'SGEO/SDRW preserve editable native 2D/3D projected geometry, not the complete higher-dimensional or time-dependent physics state. Keep the experiment JSON separately. SLDC reports preserve native editable equations. Keep experiment JSON as the source of truth for solver recreation.'));
     dialog('Export scientific results', wrap);
 }
 function registerInputControls() {
@@ -929,7 +999,7 @@ async function init() {
     requestAnimationFrame(playTick);
     try {
         const [r, defaults, status] = await Promise.all([request('/templates', undefined, 'GET'), request('/default', undefined, 'GET'), request('/status', undefined, 'GET')]);
-        formats = { sgeo: status.formats.sgeo, sdrw: status.formats.sdrw, pdf: status.formats.pdf };
+        formats = { sgeo: status.formats.sgeo, sdrw: status.formats.sdrw, pdf: status.formats.pdf, sldc: status.formats.sldc };
         presets = r;
         config = defaults.classical;
         quantum = defaults.quantum;

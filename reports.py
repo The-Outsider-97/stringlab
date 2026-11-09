@@ -38,6 +38,19 @@ def pdf_report(raw: dict, title: str = "SLAI StringLab - Experiment Report") -> 
     from reportlab.lib.enums import TA_CENTER
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.graphics.shapes import Drawing, Line, PolyLine, Rect, String
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    # Register the system's installed Unicode font (not redistributed in StringLab).
+    # The default PDF base-14 fonts cannot reliably render Δ and superscripts.
+    for font_path in (r"C:\Windows\Fonts\arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                      "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"):
+        try:
+            if Path(font_path).is_file():
+                pdfmetrics.registerFont(TTFont("StringLabMath", font_path))
+                break
+        except Exception:
+            pass
+    math_font = "StringLabMath" if "StringLabMath" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
     from .physics import evaluate_actions
 
     c = validated(raw)
@@ -56,6 +69,12 @@ def pdf_report(raw: dict, title: str = "SLAI StringLab - Experiment Report") -> 
     style.add(ParagraphStyle(name="SLTiny", parent=style["BodyText"], fontSize=8, leading=11))
     style.add(ParagraphStyle(name="SLTitle", parent=style["Title"], fontSize=21,
                              textColor=colors.HexColor("#15364c"), alignment=TA_CENTER, spaceAfter=6))
+    style.add(ParagraphStyle(name="SLFormula", parent=style["BodyText"], fontName=math_font,
+                             fontSize=12.2, leading=18, spaceBefore=8, spaceAfter=12,
+                             textColor=colors.HexColor("#193d53")))
+    # All report paragraphs, including table cells, need Unicode support for X⁻ and ∂τ.
+    for name in ("Normal", "BodyText", "Title", "Heading2", "SLMeta", "SLSection", "SLTiny", "SLTitle", "SLFormula"):
+        style[name].fontName = math_font
     def P(x,sty="BodyText"):
         return Paragraph(escape(str(x)),style[sty])
     def table(rows, widths):
@@ -77,10 +96,11 @@ def pdf_report(raw: dict, title: str = "SLAI StringLab - Experiment Report") -> 
                "inspect the globally admissible classical field and compare sampled on-shell action densities. "
                "The governing equations are specialized to flat Minkowski spacetime and light-cone gauge."),
              P("2. Governing mathematics", "SLSection"),
-             P("Metric: ds^2 = -2 dX(+) dX(-) + sum[dY(i)^2]. Light-cone gauge: X(+) = p(+) tau. "
-               "Equations: d_tau^2 Y(i) - d_sigma^2 Y(i) = 0; the Virasoro constraints reconstruct "
-               "the two partial derivatives of X(-). Closed strings must also satisfy the global "
-               "integral of d_tau Y . d_sigma Y = 0."),
+             P("In flat Minkowski spacetime, the squared separation between two events is given by the following light-cone metric. The dynamical equations use differential derivatives. The equations are mathematical expressions, not literal programming syntax."),
+             Paragraph("Δs² = −2 ΔX⁺ ΔX⁻ + Σᵢ (ΔYⁱ)²", style["SLFormula"]),
+             Paragraph("∂²Yⁱ/∂τ² − ∂²Yⁱ/∂σ² = 0", style["SLFormula"]),
+             Paragraph("X⁺ = p⁺τ;   T = 1/(2πα′)", style["SLFormula"]),
+             P("The Virasoro constraints reconstruct the derivatives of X⁻. Closed strings must also satisfy the global integral of (∂τY · ∂σY) over σ = 0."),
              P("3. Reproducible configuration", "SLSection")]
     crows=[["Parameter","Value"],
            ["String model",f"{c['kind']} | {c['bc']} boundary conditions"],
@@ -161,3 +181,52 @@ def pdf_report(raw: dict, title: str = "SLAI StringLab - Experiment Report") -> 
         cvs.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer)
     return pdf.getvalue()
+
+
+def sldc_report(raw: dict, title: str = "SLAI StringLab — Experiment Report") -> bytes:
+    """Author a real editable SLDC 1.x package with native equation blocks.
+
+    Uses only the canonical `src.utils.sldc` library. No imitation ZIP
+    schemas, PDF embedding or rasterized mathematical expressions.
+    """
+    from hashlib import sha256
+    try:
+        from src.utils import sldc
+    except ImportError as exc:
+        raise ImportError("Native SLDC requires SLAI src.utils.sldc in the active checkout") from exc
+    from .physics import evaluate_actions
+    c = validated(raw)
+    f = frame(c, 0.)
+    actions = evaluate_actions(c, time_samples=24)
+    digest = sha256(json.dumps(c, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+    b = sldc.make_block
+    blocks = [
+        b("heading", title, attributes={"level": 1}),
+        b("paragraph", "Scientific classification: restricted flat Minkowski free classical bosonic string; no experimental claim."),
+        b("heading", "1. Governing equations", attributes={"level": 2}),
+        b("paragraph", "The metric in light-cone coordinates is defined using squared finite displacements in flat Minkowski space. The worldsheet dynamics uses the corresponding derivatives."),
+        sldc.make_equation(r"\Delta s^{2}=-2\,\Delta X^{+}\Delta X^{-}+\sum_{i}(\Delta Y^{i})^{2}"),
+        sldc.make_equation(r"\partial_{\tau}^{2}Y^{i}-\partial_{\sigma}^{2}Y^{i}=0"),
+        sldc.make_equation(r"T=\frac{1}{2\pi\alpha'}\,,\qquad X^{+}=p^{+}\tau"),
+        sldc.make_equation(r"\partial_{\sigma}X^{-}=\frac{\partial_{\tau}Y\cdot\partial_{\sigma}Y}{p^{+}}"),
+        b("heading", "2. Reproducible configuration", attributes={"level": 2}),
+        sldc.make_table([["Parameter", "Value"],
+          ["String / boundaries", f"{c['kind']} / {c['bc']}"],
+          ["Dimensions / gauge", f"D={c['dimensions']} / light-cone"],
+          ["Regge slope", str(c['alpha_prime'])],
+          ["Spatial samples", str(c['points'])],
+          ["Solver / dt / duration", f"{c['solver']} / {c['dt']} / {c['duration']}"],
+          ["Displayed axes", ", ".join(c['projection'])],
+          ["Configuration SHA-256", digest]], header_rows=1, caption="Validated classical input"),
+        b("heading", "3. Simulation diagnostics", attributes={"level": 2}),
+        sldc.make_table([["Observable", "Value"]]+[[str(key), str(value)] for key,value in sorted(f['diagnostics'].items()) if isinstance(value,(str,int,float))],header_rows=1),
+        b("heading", "4. On-shell action comparison", attributes={"level": 2}),
+        sldc.make_table([["Quantity", "Calculated value"]]+[[str(key),str(value)] for key,value in sorted(actions.items()) if isinstance(value,(str,int,float))],header_rows=1),
+        b("paragraph", "These are on-shell quantities derived from the restricted light-cone solution, not independent general covariant Polyakov and Nambu–Goto PDE solutions."),
+        b("heading", "5. Limitations and references", attributes={"level": 2}),
+        b("paragraph", "Projected geometry omits higher-dimensional coordinates. See saved native StringLab experiment for the full configuration and its mode coefficients. Quantization, interactions and curved backgrounds are outside this classical report."),
+        b("paragraph", "D. Tong (2009), String Theory, Part III Cambridge; K. Wray (2011), An Introduction to String Theory, chapters 2–3. The mathematical and modeling conventions are described in StringLab docs/SCIENCE.md."),
+    ]
+    pkg = sldc.new_package(title, blocks)
+    sldc.validate_package(pkg)
+    return sldc.dumps_package(pkg)
