@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ../tools/build/build-static.mjs",
+    "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('node:fs');fs.mkdirSync('dist',{recursive:true});for(const n of ['index.html','styles.css'])fs.copyFileSync('src/client/'+n,'dist/'+n)\"",
     "typecheck": "tsc -p tsconfig.build.json --noEmit"
   },
-  "devDependencies": {"typescript": "^5.8.3"}
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
 }

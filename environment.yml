@@ -1,0 +1,9 @@
+name: stringlab-ci
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy>=1.26,<3
+  - reportlab>=4,<5
+  - pytest>=8
+  - pypdf>=5

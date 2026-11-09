@@ -20,7 +20,7 @@ python -m applications.stringlab --check
 python -m applications.stringlab --port 8776
 ```
 
-The `--check` command requires both canonical native adapters and ReportLab and returns a nonzero exit code when these are missing. If the desired port is occupied, select a different unused port. The server listens on loopback and provides an authenticated browser startup link; an internet connection is not required for core use. The `dist/` client assets are included, so Node.js is **not required to start** the packaged app. To modify TypeScript, run:
+The `--check` command requires both canonical native adapters and ReportLab and returns a nonzero exit code when these are missing. If the desired port is occupied, select a different unused port. The server listens on loopback and provides an authenticated browser startup link; an internet connection is not required for core use. The `dist/` client assets are included, so Node.js is **not required to start** the packaged app. To modify TypeScript, run (the standalone GitHub checkout is also supported):
 
 ```powershell
 cd G:\GAIA\AI\SLAI\applications\stringlab
@@ -30,7 +30,7 @@ npm.cmd run build
 cd G:\GAIA\AI\SLAI
 ```
 
-**Important build note**: the included TypeScript client uses a simple standalone compiler/asset copy. On the target checkout, `npm run build` delegates to the shared SLAI build helper in `applications/tools/build/build-static.mjs`. That helper was inspected and expects a `tsconfig.build.json` and `src/client/index.html`. The compiled `dist/app.js` remains the browser entry point.
+**Important build note**: `npm run build` now builds the TypeScript modules and copies the browser HTML/CSS with the local TypeScript compiler and Node.js file APIs, both in a standalone GitHub checkout and inside SLAI. It does not require a sibling `applications/tools/build` directory. The compiled `dist/app.js` remains the browser entry point and imports `dist/sgeo_view.js`.
 
 ## Features you can use
 
