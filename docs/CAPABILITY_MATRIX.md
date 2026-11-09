@@ -37,3 +37,19 @@ Date assessed: 2026-11-09. **Status is based on implementation inspection and te
 - Full SLAI v2.4 checkout, native format round trips, authenticated real shared server and Windows UI test: **not available/verified** inside the package-building environment.
 
 Do not translate a test that was skipped because SLAI is not installed into a successful integration test.
+
+## v0.5 extensions (2026-11-09)
+
+| Capability | Actual implementation | Fidelity and remaining blockers |
+| --- | --- | --- |
+| Playback 8× / 16× / 32× | Added to UI | Playback multiplier only; no change to physical integration step or scientific timestep. |
+| Mathematical PDF typography | Unicode/TrueType equation paragraphs; Δs² and worldsheet derivatives extracted in PDF test | Requires a suitable system TTF font; never embeds a packaged font. |
+| SLDC report | Canonical `src.utils.sldc` 1.x document package with editable LaTeX equation blocks | Native round-trip conditional test requires the actual SLAI checkout; not executed here. |
+| SLAI SharedMemory | Revision-tagged bounded solver diagnostics; optional publish/get contracts | Tested with contract stubs; live SLAI SharedMemory runtime not exercised here. |
+| SLAI specialist agents | Explicit STEM/Verification AgentFactory requests with read-only physics context | Tested with mocks; live SLAI agent instantiation and cross-agent reconciliation not exercised here. |
+| Dp-brane analysis | Planar static Dp with homogeneous field DBI determinant and real-action checks | Reduced analytic effective action; no dynamic brane PDE, geometry editing, strings attachment dynamics, or backreaction. |
+| RNS superstring | Finite open NS/R oscillator mass spectrum, partial NS GSO | No Ramond spinor/GSO chirality construction, super-Virasoro constraints or interactions. |
+| CFT / BRST | Central charges, Virasoro central coefficient, necessary BRST anomaly prerequisite | Not BRST cohomology, full CFT correlators, full QBRST nilpotency computation. |
+| Calabi–Yau | Algebraic Fermat quintic smoothness, point-inspection; flat complex 3-torus coordinate model | No Ricci-flat quintic metric, full compactification, spectrum or Hodge calculation. |
+| General covariant NG/Polyakov numerical solvers | **Not implemented** | Existing flat light-cone solution and on-shell action evaluation retained. |
+| Canonical SGEO interactive renderer | **Not integrated** | Native exports use canonical SGEO; viewport still software canvas. A reusable shared renderer contract is not present in SLAI tools. |

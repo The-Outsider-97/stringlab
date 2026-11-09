@@ -41,6 +41,11 @@ def main(argv=None) -> int:
         pdf = True
     except ImportError:
         pdf = False
+    try:
+        from src.utils import sldc as _sldc
+        sldc_ok = callable(_sldc.new_package)
+    except ImportError:
+        sldc_ok = False
     if args.check:
         from .interop import availability
         formats = availability()
@@ -58,6 +63,9 @@ def main(argv=None) -> int:
     app = App()
     app.store = ExperimentStore(data / "experiments")
     app.pdf_available = pdf
+    app.sldc_available = sldc_ok
+    from .agents import AgentBridge
+    app.agents = AgentBridge()
     options = ServerOptions(token=args.token or secrets.token_urlsafe(28), client_dir=dist,
                             host=args.host, port=args.port or 8776,
                             tools_web_dir=Path(__file__).resolve().parent.parent / "tools" / "web",

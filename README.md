@@ -1,4 +1,4 @@
-# SLAI StringLab — scientific computing application (v0.4 preview)
+# SLAI StringLab — scientific computing application (v0.5 scientific extension preview)
 
 **A real, locally computed educational/research-support application—not a complete string-theory simulator.** It uses analytical free-bosonic light-cone string equations, a numerical transverse wave solver, a finite critical-bosonic Fock-spectrum calculator, and 3D projections. A model is classified *physical in the restricted classical setup* only when the checked constraints permit that description. Its results are **not experimental confirmation of string theory**.
 
@@ -36,16 +36,18 @@ cd G:\GAIA\AI\SLAI
 
 - **Free classical strings**: open strings with NN/DD/ND/DN transverse boundary conditions; closed periodic strings with independent left/right Fourier modes. Controls for amplitudes, phases, harmonic number, target dimension, sample count, light-cone gauge rate and α′. Explicit check of closed-string global longitudinal closure/level matching.
 - **Mathematical/numerical time evolution**: analytical Fourier series; leapfrog finite-difference evolution of the **transverse wave equation**, with CFL enforcement, finite time/step budgets, numerical error against exact modes, and comparison at 64/128/256 samples. Numerical longitudinal constraints are labeled approximate, not certified.
-- **Scientific 3-axis projection**: 3D software-canvas viewport, orbit, pan, zoom, ortho/perspective, fit, axes selection, time slider, speed adjustment, projected time-sweep worldsheet wireframe. The `σ` axis is explicitly a *worldsheet parameter*, not a spatial target-space coordinate. Other dimensions are not visible. The canvas is not the SLAI SGEO renderer.
+- **Scientific 3-axis projection**: 3D software-canvas viewport, orbit, pan, zoom, ortho/perspective, fit, axes selection, time slider, playback speeds 0.5×, 1×, 2×, 4×, 8×, 16×, and 32×, projected time-sweep worldsheet wireframe. The `σ` axis is explicitly a *worldsheet parameter*, not a spatial target-space coordinate. Other dimensions are not visible. The canvas is not the SLAI SGEO renderer.
 - **Quantum arithmetic**: finite occupation-number levels and mass² in the critical bosonic open/closed light-cone Fock model (26D), level matching, tachyon indication, circle momentum and winding, T-dual radius and invariant mass checks. This is not a quantum field evolution or full BRST validation.
 - **12 experiment configurations**: all select operative parameter sets and mathematical calculations. The D-brane experiment is honestly **reduced to fixed Dirichlet supports**; it does not compute Dp-brane dynamics. Compactification/T-duality presets use real finite quantum formulas, not animation.
-- **Data & reports**: scientific JSON snapshot, CSV time series, PDF report (ReportLab), save/open/delete JSON experiments with revision checks. Quantum state is included in saved experiments. 3D SGEO curve-segment export / projected worldsheet triangles, editable 2D SDRW diagrams, and read-only native geometry inspection use the actual SLAI facades when installed; unsupported archives are not faked.
+- **Advanced finite theory calculators**: Open RNS NS/R mass spectra with GSO restrictions, central-charge and Virasoro-anomaly arithmetic (BRST necessary condition only), static flat Dp-brane DBI determinant with constant gauge field, Fermat-quintic and flat complex torus mathematics. These are reduced finite computations, not complete interacting theories.
+- **Agent and Shared Memory adapter**: revision-tagged bounded diagnostic publishing through SLAI SharedMemory and explicit STEM/Verification requests through AgentFactory, when available. Neither controls or replaces the deterministic solver.
+- **Data & reports**: scientific JSON snapshot, CSV time series, PDF report with typographically rendered Δs² / worldsheet equations (ReportLab), editable SLDC 1.x report with native LaTeX equation blocks (requires SLAI), save/open/delete JSON experiments with revision checks. Quantum state is included in saved experiments. 3D SGEO curve-segment export / projected worldsheet triangles, editable 2D SDRW diagrams, and read-only native geometry inspection use the actual SLAI facades when installed; unsupported archives are not faked.
 
 ## Scientific scope and limitations
 
 Read `docs/SCIENCE.md`, `docs/CAPABILITY_MATRIX.md`, and `docs/INTEGRATION.md` **before** interpreting the results. Selected model uses the worldsheet coordinates τ and σ; `ds² = −2dX⁺dX⁻ + Σᵢ(dYⁱ)²`, `X⁺=p⁺τ`, and `T = 1/(2πα′)` with `ħ = c = 1`. Classical target dimension D may vary from 4 to 26, with D−2 transverse components. The critical quantum bosonic Fock-spectrum equations are physically classified only for D=26; 10-dimensional superstring models are **not** simulated.
 
-The following are **not** implemented: general covariant Polyakov or Nambu–Goto variational solvers; curved target manifolds; full 26D field renderer; arbitrary SGEO-to-valid-physics initial-data conversion; 3D Dp-brane surface modeling or dynamic branes; CFT/BRST/superstrings; Calabi–Yau compactification; AdS/CFT; full SLDC report export; native SLAI agent execution; GPU SGEO viewer integration; full numerical constraint-preserving integration. Imported SGEO/SDRW is inspected as a native reference only.
+The following are **still not fully implemented**: general covariant Polyakov or Nambu–Goto variational solvers; curved target manifolds; full 26D field renderer; arbitrary SGEO-to-valid-physics initial-data conversion; general time-dependent Dp-brane geometry and backreacting dynamics; full CFT/BRST/superstring systems; solved Calabi–Yau metric and compactification; AdS/CFT; canonical SGEO interactive renderer (current viewport remains projected software canvas); full numerical constraint-preserving integration. Imported SGEO/SDRW is inspected as a native reference only.
 
 ## Testing
 
@@ -64,6 +66,8 @@ For **native integration verification**, run the conditional integration tests w
 ## Files
 
 `physics.py` is the deterministic classical model and finite-difference numerical solver; `quantum.py` is discrete critical-bosonic arithmetic; `interop.py` uses public SLAI spatial-format facades; `routes.py` supplies API routes to the shared SLAI HTTP server; `store.py` handles revision-safe local experiment storage; `reports.py` handles scientific exports. `src/client/` contains TypeScript/browser source; `dist/` contains prebuilt assets. Python tests live under `tests/`. Runtime data goes to `%LOCALAPPDATA%\SLAI\StringLab` by default; it is not included in this ZIP.
+
+Further details: `docs/ADVANCED_MODELS.md` (precise scope, assumptions, supported formulas, and testing boundaries).
 
 ## References
 

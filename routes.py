@@ -7,8 +7,10 @@ from . import __version__
 from .physics import ModelError, validated, frame, series, convergence, sweep, template, evaluate_actions
 from .quantum import spectrum, t_dual, quantum_template
 from .presets import library
-from .reports import csv_series, json_snapshot, pdf_report
+from .reports import csv_series, json_snapshot, pdf_report, sldc_report
 from .interop import export_sgeo, export_sdrw, inspect_native, availability
+from .advanced import rns_spectrum, conformal_anomaly, calabi_yau_example
+from .branes import flat_dbi
 
 
 def build_router():
@@ -26,9 +28,9 @@ def build_router():
     def status(app, req):
         return {"name": "SLAI StringLab", "version": __version__, "model": "flat-space classical free string",
                 "quantum": "critical bosonic Fock-spectrum arithmetic", "formats": {"scientific_json": True,
-                "csv": True, "pdf": app.pdf_available, "sgeo": availability()["sgeo"], "sdrw": availability()["sdrw"], "sldc": False},
+                "csv": True, "pdf": app.pdf_available, "sgeo": availability()["sgeo"], "sdrw": availability()["sdrw"], "sldc": app.sldc_available},
                 "geometry_fidelity": "SGEO/SDRW are coordinate projections, not complete higher-dimensional states.",
-                "optional_agents": "not connected (deterministic core available)"}
+                "optional_agents": app.agents.status()}
 
     @router.route("GET", "/api/templates")
     def presets(app, req):
@@ -131,5 +133,42 @@ def build_router():
     @router.route("POST", "/api/import/sdrw")
     def sdrw_import(app, req):
         return use(inspect_native, req.bytes(6 * 1024 * 1024), "sdrw")
+
+
+    @router.route("GET", "/api/agents/status")
+    def agent_status(app, req):
+        return app.agents.status()
+
+    @router.route("POST", "/api/agents/publish")
+    def agent_publish(app, req):
+        body = req.json()
+        return use(app.agents.publish_result, body.get("configuration"), body.get("time",0.), body.get("revision",0))
+
+    @router.route("POST", "/api/agents/run")
+    def agent_run(app, req):
+        return use(app.agents.run, req.json())
+
+    @router.route("POST", "/api/advanced/rns")
+    def rns(app, req):
+        return use(rns_spectrum, req.json())
+
+    @router.route("POST", "/api/advanced/cft")
+    def cft(app, req):
+        return use(conformal_anomaly, req.json())
+
+    @router.route("POST", "/api/advanced/calabi-yau")
+    def calabi_yau(app, req):
+        return use(calabi_yau_example, req.json())
+
+    @router.route("POST", "/api/advanced/dbrane")
+    def dbrane(app, req):
+        return use(flat_dbi, req.json())
+
+    @router.route("POST", "/api/export/sldc")
+    def native_document(app, req):
+        if not app.sldc_available:
+            raise BadRequest("Native SLDC export requires SLAI's src.utils.sldc module.")
+        return file_response(use(sldc_report, req.json().get("configuration")),
+                             "stringlab_report.sldc", "application/octet-stream")
 
     return router

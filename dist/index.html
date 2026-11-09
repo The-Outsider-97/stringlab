@@ -36,13 +36,13 @@
         <button id="restartBtn" class="icon-button" title="Restart">↺</button><button id="playBtn" class="play-button" title="Play/Pause">▶</button>
         <button id="stepBtn" class="icon-button" title="Next frame">⏭</button><span id="timeValue" class="time-value">τ = 0.00</span>
         <input id="timeline" type="range" min="0" max="79" step="1" value="0" aria-label="Simulation timeline">
-        <select id="speedSelect" class="tiny-select" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1.0×</option><option value="2">2.0×</option><option value="4">4.0×</option></select>
+        <select id="speedSelect" class="tiny-select" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1.0×</option><option value="2">2.0×</option><option value="4">4.0×</option><option value="8">8.0×</option><option value="16">16.0×</option><option value="32">32.0×</option></select>
         <span class="frame-readout" id="frameInfo">FRAME 1 / 80</span>
       </div>
       <div class="lower-panel"><div class="panel-tabs" role="tablist" aria-label="Scientific workspace">
         <button class="panel-tab active" data-tab="results">RESULTS</button><button class="panel-tab" data-tab="charts">CHARTS</button>
         <button class="panel-tab" data-tab="math">MATHEMATICS</button><button class="panel-tab" data-tab="quantum">QUANTUM / T-DUALITY</button>
-        <button class="panel-tab" data-tab="analysis">SWEEPS & CONVERGENCE</button><button class="panel-tab" data-tab="compare">COMPARE</button>
+        <button class="panel-tab" data-tab="analysis">SWEEPS & CONVERGENCE</button><button class="panel-tab" data-tab="compare">COMPARE</button><button class="panel-tab" data-tab="advanced">ADVANCED THEORY</button>
       </div><section id="panelContent" class="panel-body" aria-live="polite"></section></div>
     </main>
     <aside class="right-panel" aria-label="Simulation properties">
