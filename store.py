@@ -1,0 +1,93 @@
+"""Persistent local experiments; validate before atomic save; path-safe opaque IDs."""
+from __future__ import annotations
+
+import json
+import re
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
+
+from .physics import ModelError, validated
+from .quantum import spectrum
+
+_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+class ExperimentStore:
+    def __init__(self, root: Path):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.lock = threading.RLock()
+
+    def _path(self, uid: str) -> Path:
+        if not isinstance(uid, str) or not _ID.fullmatch(uid):
+            raise ModelError("Invalid experiment identifier.")
+        return self.root / (uid + ".json")
+
+    def save(self, payload: dict) -> dict:
+        from applications.tools.storage import atomic_write_json
+        if not isinstance(payload, dict):
+            raise ModelError("Experiment must be an object.")
+        c = validated(payload.get("configuration"))
+        quantum = payload.get("quantum")
+        if quantum is not None:
+            spectrum(quantum)  # validates full finite oscillator configuration; do not silently alter it.
+        title = payload.get("title", "Untitled experiment")
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120 or any(ord(ch) < 32 for ch in title):
+            raise ModelError("Title must contain 1–120 printable characters.")
+        uid = payload.get("id") or uuid4().hex
+        target = self._path(uid)
+        with self.lock:
+            previous = None
+            if target.exists():
+                try:
+                    previous = json.loads(target.read_text(encoding="utf-8"))
+                except (ValueError, OSError) as exc:
+                    raise ModelError("Stored experiment is unreadable; it was not overwritten.") from exc
+            expected = payload.get("expected_revision", 0)
+            if type(expected) is not int or expected < 0 or (previous or {}).get("revision", 0) != expected:
+                raise ModelError("Revision conflict. Reload before saving to avoid overwriting a newer experiment.")
+            result = {"id": uid, "schema": 1, "title": title.strip(), "revision": expected + 1,
+                      "created_utc": (previous or {}).get("created_utc") or _now(),
+                      "updated_utc": _now(), "configuration": c, "quantum": quantum,
+                      "provenance": {"engine": "stringlab.physics", "engine_schema": 1,
+                                     "category": "classical analytical/numerical reduced light-cone model",
+                                     "references": ["Tong2009:1.2-1.4", "Wray2011:2-3"]}}
+            atomic_write_json(target, result)
+            return result
+
+    def read(self, uid: str) -> dict:
+        with self.lock:
+            path = self._path(uid)
+            if not path.is_file():
+                raise ModelError("Experiment not found.")
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                validated(data["configuration"])
+                if data.get("quantum") is not None:
+                    spectrum(data["quantum"])
+                return data
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ModelError("Saved experiment is damaged or incompatible.") from exc
+
+    def list(self) -> list[dict]:
+        with self.lock:
+            items = []
+            for path in self.root.glob("*.json"):
+                try:
+                    item = self.read(path.stem)
+                except ModelError:
+                    continue
+                items.append({k: item[k] for k in ("id", "title", "revision", "updated_utc")})
+            return sorted(items, key=lambda x: x["updated_utc"], reverse=True)
+
+    def delete(self, uid: str) -> None:
+        with self.lock:
+            path = self._path(uid)
+            if path.exists():
+                path.unlink()
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
