@@ -228,5 +228,9 @@ def sldc_report(raw: dict, title: str = "SLAI StringLab — Experiment Report") 
         b("paragraph", "D. Tong (2009), String Theory, Part III Cambridge; K. Wray (2011), An Introduction to String Theory, chapters 2–3. The mathematical and modeling conventions are described in StringLab docs/SCIENCE.md."),
     ]
     pkg = sldc.new_package(title, blocks)
+    # new_package defaults to 1.0.0, but native equation blocks require the
+    # explicit SLDC 1.1.0 scientific-feature opt-in. Canonical serialization
+    # rejects 1.0 packages that declare the scientific feature.
+    pkg.version = "1.1.0"
     sldc.validate_package(pkg)
     return sldc.dumps_package(pkg)
