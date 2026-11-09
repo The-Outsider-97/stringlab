@@ -33,3 +33,26 @@ The application code calls the inspected SLAI v2.4 public `SGEODocument` and `SD
 - Windows browser interaction check on supported resolutions and themes.
 - Windows solver and renderer benchmark with actual machine specs.
 - Optional model-facing SLAI agents: **not connected**, no agent test result.
+
+## v0.6 local verification — 2026-11-09 (separate from historical v0.4 checkpoint)
+
+```text
+PYTHONPATH=/mnt/data/stringlab_work python -m pytest /mnt/data/stringlab_work/stringlab/tests -q
+64 passed, 5 skipped
+```
+
+Five conditional tests require the full SLAI checkout. Native SGEO extraction was also tested against an *in-memory fake facade*, which is a contract/unit test and **not** an executed canonical SLAI native round trip. A known FRW Nambu–Goto canonical momentum inversion bug was corrected and regression tested. Also checked flat nonlinear energy behavior, exact trivial solutions, FRW energy background-dependence, Polyakov constraint convergence, Dp DBI affine induced matrices, finite superstring/CFT/BRST/CY quantities and rejected pathological inputs.
+
+```text
+cd /mnt/data/stringlab_work/stringlab
+# tsc -p tsconfig.build.json
+# Exit status 0; dist/app.js and dist/sgeo_view.js generated
+```
+
+Chromium DOM-only smoke: actual app HTML/CSS/build JS, Python-generated initial classical and Polyakov trajectories mocked over Fetch (local HTTP navigation blocked), no JS page exceptions; verified 12 preset entries, dynamics panel simulation run, Loop/Ping-pong playback at 32×, advanced theory dropdown and timeline. Chromium's WebGL2 hardware context was unavailable in this sandbox. **Real WebGL2 hardware rendering, authenticated SLAI server, genuine native SGEO packages and Windows runtime are not verified**. The GPU code's TypeScript type checking is **not** evidence of GPU hardware behavior. These validations remain mandatory before production use.
+
+## Continuous integration correction (v0.6)
+
+The previous GitHub Python workflow ran bare `pytest` at the repository root, while tests imported the package name `stringlab` without including the checkout parent on the import path. This caused collection-time `ModuleNotFoundError`. Added `pytest.ini` with an explicit parent import path; confirmed **bare `pytest -q` from the repository root passes** (64 passed, 5 environment-dependent skipped).
+
+The old Conda workflow referred to a nonexistent `environment.yml`. It is now an explicit manually triggered compatibility check with a declared environment. The automatic workflow tests Python 3.11 and 3.13 on Ubuntu/Windows and independently builds the browser TypeScript assets using a standalone, cross-platform `npm run build`. CI execution on GitHub must still be checked after pushing this correction; a passing local run is not a CI status.

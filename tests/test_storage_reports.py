@@ -75,3 +75,23 @@ def test_quantum_state_persists_in_saved_experiment(tmp_path, monkeypatch):
     store=ExperimentStore(tmp_path)
     item=store.save({'title':'T-dual setup','configuration':template('closed'),'quantum':q})
     assert store.read(item['id'])['quantum']['radius']==3.25
+
+
+def test_extended_solver_config_persists_and_is_validated(tmp_path, monkeypatch):
+    pkg=types.ModuleType('applications');pkg.__path__=[]
+    tools=types.ModuleType('applications.tools');tools.__path__=[]
+    storage=types.ModuleType('applications.tools.storage')
+    storage.atomic_write_json=lambda path, obj: path.write_text(json.dumps(obj),encoding='utf-8')
+    for name,module in [('applications',pkg),('applications.tools',tools),('applications.tools.storage',storage)]:
+        monkeypatch.setitem(sys.modules,name,module)
+    store=ExperimentStore(tmp_path)
+    numerical={'model':'nambu_goto','kind':'open','points':64,'frames':16,'duration':1.,'amplitude':.3,'hubble':.04,'electric':0.}
+    original=store.save({'title':'Expanding NG','configuration':template('open'),'numerical':numerical})
+    got=store.read(original['id'])
+    assert got['numerical']['hubble']==.04
+    assert got['provenance']['category']=='covariant or nonlinear numerical PDE'
+    with pytest.raises(ModelError,match='Unknown numerical solver'):
+        store.save({'title':'Bad','configuration':template('open'),'numerical':{'model':'not-simulation'}})
+    with pytest.raises(ModelError):
+        store.save({'title':'Oversized','configuration':template('open'),
+                    'numerical':{**numerical,'points':100000}})

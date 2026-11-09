@@ -159,3 +159,57 @@ def inspect_native(content: bytes, kind: str) -> dict[str, Any]:
     return {"format": kind, "inspection": details, "digest_sha256": sha256(content).hexdigest(),
             "import_mode": "read_only_reference",
             "note": "Imported geometry is a reference. It has not been converted into boundary-compatible string initial data."}
+
+
+def _native_scene_from_bytes(content: bytes, *, source: str, requested_time: float | None = None) -> dict[str, Any]:
+    """Read native geometry from the canonical SGEO document object model."""
+    Type=_sgeo()
+    try:
+        doc=Type.from_bytes(content,mode='read')
+        doc.validate(mode='strict',raise_on_error=True)
+        segments=[]
+        for offset in range(0,4096,100):
+            identifiers=doc.query_ids(type_name='segment',limit=100,offset=offset)
+            for oid in identifiers:
+                geo=doc.get(oid).get('geometry',{})
+                if geo.get('kind')!='segment':
+                    raise ModelError('Native scene contains an unexpected segment shape.')
+                segments.append({'id':oid,'start':geo['start'],'end':geo['end']})
+            if len(identifiers)<100:break
+        else:raise ModelError('SGEO segment budget exceeded (maximum 4096).')
+        mesh=None
+        mesh_ids=doc.query_ids(type_name='mesh',limit=1)
+        # Also accept native analytic primitives, not only mesh objects.
+        surface_kinds=('box','cylinder','sphere','extrusion','revolution','brep','nurbs_surface')
+        if mesh_ids or any(doc.query_ids(type_name=k,limit=1) for k in surface_kinds):
+            raw=doc.to_mesh()
+            mesh={'vertices':raw.get('vertices',[]),'faces':raw.get('faces',[])}
+            if len(mesh['vertices'])>20000 or len(mesh['faces'])>35000:
+                raise ModelError('Native SGEO surface exceeds the viewer safety budget.')
+        if not segments and mesh is None:
+            raise ModelError('SGEO contains no supported 3D segment or tessellatable surface geometry.')
+    except ModelError:raise
+    except Exception as exc:
+        raise ModelError(f'Canonical SGEO scene could not be decoded: {exc}') from exc
+    return {'format':'slai.sgeo','source':source,
+            'valid_native_document':True,'digest_sha256':sha256(content).hexdigest(),
+            'time':float(requested_time) if requested_time is not None else None,
+            'segments':segments,'mesh':mesh,'units':doc.inspect().get('unit','m') if isinstance(doc.inspect(),dict) else 'm',
+            'geometry_scope':'canonical SGEO native scene geometry, not a reconstructed string state',
+            'renderer_hint':'WebGL2; coordinate-frame transform and material fidelity are limited to the canonical to_mesh world transform'}
+
+
+def load_native_sgeo_scene(content: bytes) -> dict[str, Any]:
+    """Validate and display an arbitrary SGEO scene; do not treat it as initial string data."""
+    if not isinstance(content,bytes) or not 16<=len(content)<=6*1024*1024:
+        raise ModelError('SGEO import must be between 16 bytes and 6 MB.')
+    return _native_scene_from_bytes(content,source='canonical_import')
+
+
+def canonical_sgeo_scene(raw: dict, tau: float = 0., *, worldsheet: bool = False) -> dict[str, Any]:
+    """Verified native SGEO snapshot from writer -> reader -> scene geometry."""
+    content=export_sgeo(raw,tau,worldsheet=worldsheet)
+    view=_native_scene_from_bytes(content,source='canonical_roundtrip',requested_time=float(tau))
+    view['coordinate_axes']=validated(raw)['projection']
+    view['geometry_scope']='3D projection; omitted target coordinates remain in experiment JSON'
+    return view

@@ -70,7 +70,7 @@ def main(argv=None) -> int:
                             host=args.host, port=args.port or 8776,
                             tools_web_dir=Path(__file__).resolve().parent.parent / "tools" / "web",
                             asset_dirs=(Path(__file__).resolve().parent / "assets", shared_assets_dir()),
-                            max_body_bytes=2 * 1024 * 1024)
+                            max_body_bytes=8 * 1024 * 1024)
     server = LocalServer(app, Identity("stringlab", "StringLab"), build_router(), options)
     return serve(server, title="SLAI StringLab", version=__version__,
                  url=f"{server.base_url}/?token={options.token}",
