@@ -72,6 +72,9 @@ def pdf_report(raw: dict, title: str = "SLAI StringLab - Experiment Report") -> 
     style.add(ParagraphStyle(name="SLFormula", parent=style["BodyText"], fontName=math_font,
                              fontSize=12.2, leading=18, spaceBefore=8, spaceAfter=12,
                              textColor=colors.HexColor("#193d53")))
+    # All report paragraphs, including table cells, need Unicode support for X⁻ and ∂τ.
+    for name in ("Normal", "BodyText", "Title", "Heading2", "SLMeta", "SLSection", "SLTiny", "SLTitle", "SLFormula"):
+        style[name].fontName = math_font
     def P(x,sty="BodyText"):
         return Paragraph(escape(str(x)),style[sty])
     def table(rows, widths):
