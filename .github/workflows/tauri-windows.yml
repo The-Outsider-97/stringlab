@@ -2,6 +2,13 @@ name: Build StringLab Tauri Windows installer
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - "desktop/**"
+      - "package.json"
+      - "app.py"
+      - ".github/workflows/tauri-windows.yml"
 
 jobs:
   build:
