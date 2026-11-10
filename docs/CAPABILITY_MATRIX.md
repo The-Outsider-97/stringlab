@@ -1,4 +1,6 @@
-# Capability, evidence and limitations matrix — StringLab 0.6
+# Capability, evidence and limitations matrix — StringLab 0.7
+
+> Current state is the **v0.7 section at the end**; the earlier tables are kept as history and are superseded where the last section says so.
 
 Date assessed: 2026-11-09. **Status is based on implementation inspection and tests actually executed inside this creation environment**, not on a successfully launched Windows SLAI v2.4 checkout. “Tested” below means stand-alone scientific Python tests and browser DOM-only smoke checks were executed; that is distinct from native SLAI integration verification.
 
@@ -72,3 +74,23 @@ Do not translate a test that was skipped because SLAI is not installed into a su
 | Animation | Sample-time interpolation in display only, loop/once/ping-pong, hidden tab pause, 0.5×–32×, GPU trail rendering | No quantum time dynamics; no numeric integration between display frames |
 
 **Verification evidence:** Run the local tests, TS typechecker and actual Windows SLAI integration suite on your own checkout. The full SLAI native module was unavailable in the packaging sandbox; skipped native test modules remain release blockers rather than passed claims. See `docs/NUMERICAL_MODELS.md` for equations and physical restrictions.
+
+## v0.7 — client rewrite, animation, simulation and SLAI agents (2026-11-10)
+
+Supersedes the older rows for the viewport, comparison and agents. Evidence: `docs/TEST_RESULTS.md` (container, software WebGL, no Windows/GPU).
+
+| Capability | State | Evidence | Remaining limitation |
+| --- | --- | --- | --- |
+| WebGL2 viewport with automatic 2D fallback | Implemented | 12 real-browser tests incl. `?renderer=2d`; zero console errors | Real-GPU behaviour and frame rate unverified |
+| Orbit/pan/zoom/pinch, inertia, view presets, fit, gizmo, picking, probe trail, keyboard | Implemented | browser test drives orbit, zoom, fit, 1–4/0, pick; pure maths unit-tested in the shared kit | Touch gestures not exercised in a real touch device |
+| Shared camera maths with SPADRA | Promoted into `applications/tools/web` | 38 kit tests | SPADRA's app not rebuilt/run here |
+| Time-gated worldsheet, speed/energy/depth colouring | Implemented | scene unit tests; screenshots | Projection only, not a Lorentzian embedded sheet |
+| Single playback clock (loop/once/ping-pong, 0.25–4×) | Implemented | playback unit tests; browser test | 8–32× removed (they exceeded what the display can show faithfully) |
+| Live parameter editing with recompute | Implemented | browser test (edit → new revision) | none beyond solver limits |
+| Baseline compare with ghost overlay | Implemented | screenshot check; panel built in browser test | No synchronised dual viewport |
+| STEM Agent verification | Implemented | route tests + browser test | Agent-side limits apply |
+| Simulation Agent rollout (identical to direct solver) | Implemented | route tests + browser test | FD solver only |
+| Animation Agent tracks + animated `.sgeo` | Implemented | route tests + browser download test | Animated export only; not re-imported here |
+| Verification / Provenance agents | Wired when importable | **not importable in the container; untested** | Unknown on your checkout |
+| Saved experiments, dialogs, import/export | Implemented | browser tests | Windows filesystem untested |
+| Unit-tested pure client logic | `geometry`, `playback`, `scene`, `logic`, `format` | 36 TS tests | Panels and renderers are covered by the browser test, not unit tests |

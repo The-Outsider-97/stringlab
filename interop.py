@@ -12,7 +12,7 @@ from json import dumps
 from math import sqrt
 from typing import Any
 
-from .physics import ModelError, frame, series, validated
+from .physics import ModelError, frame_at, series, validated
 
 
 def _sgeo():
@@ -50,23 +50,23 @@ def _digest(c: dict) -> str:
     return sha256(dumps(c, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
-def export_sgeo(raw: dict, tau: float = 0., *, worldsheet: bool = False) -> bytes:
-    """SGEO curve segments and optional tessellated projected worldsheet.
+def new_string_document(c: dict, tau: float, *, name: str = "StringLab projected geometry", worldsheet: bool = False):
+    """The SGEO document for one experiment at ``tau``: the string as curve segments (and, optionally, a tessellated worldsheet).
 
-    Coordinates in the document are a 3-axis projection; no dimensions are
-    silently discarded, because the omission and axis map are in native metadata.
+    Coordinates are a 3-axis projection; no dimension is silently dropped, because the omission and the axis map are in the native
+    semantics. The geometry comes from ``frame_at``, so the finite-difference solver is exported when the experiment selects it.
+    Returns ``(document, group_id, frame)``.
     """
-    c = validated(raw)
     SGEODocument = _sgeo()
-    doc = SGEODocument.new("StringLab projected geometry", unit="m")
+    doc = SGEODocument.new(name, unit="m")
     head = doc.add_group("Computed string projection")
-    doc.attach_semantics(head, {"source": "SLAI StringLab", "theory": c["theory"],
+    doc.attach_semantics(head, {"source": "SLAI StringLab", "theory": c["theory"], "solver": c["solver"],
                   "coordinate_axes": c["projection"], "model_digest_sha256": _digest(c),
                   "model_dimensions": c["dimensions"], "gauge": "light-cone, flat background",
                   "physical_units_warning": "Interop convention: 1 model length = 1 metre; not an experimental calibration",
                   "projection_warning": "3D projection only, see saved StringLab experiment for full model"},
                   namespace="stringlab")
-    f = frame(c, tau)
+    f = frame_at(c, tau)
     points = f["geometry"]
     count = 0
     for i in range(len(points) if c["kind"] == "closed" else len(points) - 1):
@@ -78,38 +78,50 @@ def export_sgeo(raw: dict, tau: float = 0., *, worldsheet: bool = False) -> byte
     if count == 0:
         doc.add_point(points[0], parent=head, name="Collapsed string point")
     if worldsheet:
-        # Generate a triangular *display projection* from genuine sampled
-        # trajectory states; no equivalence with the Lorentzian target worldsheet
-        # metric is implied by a rendered Euclidean triangle mesh.
-        steps = 20
-        cc = dict(c)
-        cc["points"] = min(128, c["points"])
-        sampled = series({**cc, "solver": "analytical"}, steps)
-        longitudinal = len(sampled[0]["geometry"])
-        vertices = [v for x in sampled for v in x["geometry"]]
-        faces = []
-        for j in range(steps - 1):
-            for i in range(longitudinal if c["kind"] == "closed" else longitudinal - 1):
-                nxt = (i + 1) % longitudinal
-                a = j * longitudinal + i
-                b = j * longitudinal + nxt
-                d = (j + 1) * longitudinal + i
-                f = (j + 1) * longitudinal + nxt
-                for v1, v2, v3 in ((a,b,f),(a,f,d)):
-                    p, q, r = vertices[v1], vertices[v2], vertices[v3]
-                    u = [q[k]-p[k] for k in range(3)]
-                    v = [r[k]-p[k] for k in range(3)]
-                    cross = [u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]
-                    if sum(z*z for z in cross) > 1e-18:
-                        faces.append([v1,v2,v3])
-        if faces:
-            oid = doc.add_mesh(vertices, faces, name="Projected worldsheet (display only)")
-            doc.attach_semantics(oid, {"role": "parameter-time surface",
-                      "meaning": "2D swept parameter mesh projected into three display axes; not a 4D timelike embedding"},
-                      namespace="stringlab")
+        _add_worldsheet(doc, c, steps=20)
+    return doc, head, f
+
+
+def _add_worldsheet(doc, c: dict, *, steps: int) -> None:
+    """A triangular *display projection* from genuine sampled states (same solver as the experiment). No equivalence with the Lorentzian
+    target worldsheet metric is implied by a rendered Euclidean triangle mesh."""
+    cc = dict(c)
+    # Keep the mesh within the viewer budget, but never below the resolution the highest enabled mode needs (validated() enforces it).
+    highest = max((m["n"] for m in c["modes"] if m["enabled"]), default=0)
+    floor = 8 * highest if c["kind"] == "closed" else 4 * highest + 1
+    cc["points"] = max(32, floor, min(128, c["points"]))
+    sampled = series(cc, steps)
+    longitudinal = len(sampled[0]["geometry"])
+    vertices = [v for x in sampled for v in x["geometry"]]
+    faces = []
+    for j in range(steps - 1):
+        for i in range(longitudinal if c["kind"] == "closed" else longitudinal - 1):
+            nxt = (i + 1) % longitudinal
+            a = j * longitudinal + i
+            b = j * longitudinal + nxt
+            d = (j + 1) * longitudinal + i
+            e = (j + 1) * longitudinal + nxt
+            for v1, v2, v3 in ((a, b, e), (a, e, d)):
+                p, q, r = vertices[v1], vertices[v2], vertices[v3]
+                u = [q[k] - p[k] for k in range(3)]
+                v = [r[k] - p[k] for k in range(3)]
+                cross = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]]
+                if sum(z*z for z in cross) > 1e-18:
+                    faces.append([v1, v2, v3])
+    if faces:
+        oid = doc.add_mesh(vertices, faces, name="Projected worldsheet (display only)")
+        doc.attach_semantics(oid, {"role": "parameter-time surface",
+                  "meaning": "2D swept parameter mesh projected into three display axes; not a 4D timelike embedding"},
+                  namespace="stringlab")
+
+
+def export_sgeo(raw: dict, tau: float = 0., *, worldsheet: bool = False) -> bytes:
+    """SGEO curve segments and optional tessellated projected worldsheet, validated strictly and re-read before it is returned."""
+    c = validated(raw)
+    doc, _, _ = new_string_document(c, tau, worldsheet=worldsheet)
     doc.validate(mode="strict", raise_on_error=True)
     result = doc.dumps()
-    SGEODocument.from_bytes(result, mode="read").validate(raise_on_error=True)
+    _sgeo().from_bytes(result, mode="read").validate(raise_on_error=True)
     return result
 
 
@@ -119,7 +131,7 @@ def export_sdrw(raw: dict, tau: float = 0.) -> bytes:
     SDRWDocument = _sdrw()
     doc = SDRWDocument.new("StringLab coordinate diagram", unit="m")
     doc.add_layer("Calculated profile")
-    f = frame(c, tau)
+    f = frame_at(c, tau)
     xy = [[v[0], v[1]] for v in f["geometry"]]
     cleaned = [xy[0]]
     for x in xy[1:]:

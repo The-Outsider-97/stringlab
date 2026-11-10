@@ -8,6 +8,7 @@ import types
 
 import pytest
 
+from applications.tools.errors import BadRequest, Conflict, NotFound
 from stringlab.physics import ModelError, template
 from stringlab.reports import csv_series, json_snapshot, pdf_report
 from stringlab.store import ExperimentStore
@@ -51,14 +52,15 @@ def test_revision_safe_local_storage(tmp_path, monkeypatch):
     first=store.save({'title':'Case A','configuration':c,'expected_revision':0})
     assert first['revision']==1
     assert store.read(first['id'])['configuration']['kind']=='open'
-    with pytest.raises(ModelError,match='Revision conflict'):
+    with pytest.raises(Conflict,match='Revision conflict'):
         store.save({'id':first['id'],'title':'Old','configuration':c,'expected_revision':0})
     newer=store.save({'id':first['id'],'title':'New','configuration':c,'expected_revision':1})
     assert newer['revision']==2
     assert len(store.list())==1
     store.delete(first['id'])
     assert store.list()==[]
-    with pytest.raises(ModelError):store.read('../escape')
+    with pytest.raises(BadRequest):store.read('../escape')
+    with pytest.raises(NotFound):store.read('0'*32)
 
 
 def test_quantum_state_persists_in_saved_experiment(tmp_path, monkeypatch):
@@ -95,3 +97,24 @@ def test_extended_solver_config_persists_and_is_validated(tmp_path, monkeypatch)
     with pytest.raises(ModelError):
         store.save({'title':'Oversized','configuration':template('open'),
                     'numerical':{**numerical,'points':100000}})
+
+
+def test_configuration_keeps_only_model_keys_and_normalises_display():
+    from stringlab.physics import validated
+    c=template('open')
+    c['injected']={'x':'y'*10000}
+    c['display']={'worldsheet':'yes','grid':False,'color':'url(javascript:1)','extra':1}
+    out=validated(c)
+    assert 'injected' not in out
+    assert out['display']=={'worldsheet':False,'grid':False,'color':'#48b4df'}
+    c['display']={'worldsheet':True,'color':'#A0b1C2'}
+    assert validated(c)['display']=={'worldsheet':True,'grid':True,'color':'#A0b1C2'}
+    c['description']=7
+    assert validated(c)['description']==''
+
+
+def test_title_is_checked_by_the_shared_validator(tmp_path):
+    store=ExperimentStore(tmp_path)
+    for bad in ('', '   ', 'x'*121, 'line\nbreak', 5):
+        with pytest.raises(BadRequest):
+            store.save({'title':bad,'configuration':template('open')})

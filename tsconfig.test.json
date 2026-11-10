@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": false, "outDir": ".test-out", "rootDir": ".." },
+  "include": ["src/client/geometry.ts", "src/client/playback.ts", "src/client/scene.ts", "src/client/logic.ts", "src/client/format.ts", "src/client/types.ts", "tests_ts/**/*.ts", "../tools/typings/*.d.ts"]
+}

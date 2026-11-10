@@ -48,21 +48,17 @@ def test_real_sdrw_round_trip_and_inspection():
 
 def test_real_local_server_authenticated_api(tmp_path):
     server_mod = pytest.importorskip("applications.tools.server")
+    from stringlab.app import PREF_SCHEMA, StringLabApp, load_settings
     from stringlab.routes import build_router
     from stringlab.store import ExperimentStore
+    from applications.tools.storage import Prefs
 
-    class App:
-        store = ExperimentStore(tmp_path / "experiments")
-        pdf_available = False
-        sldc_available = False
-        class Agents:
-            def status(self): return {"available":False}
-        agents = Agents()
-
+    settings = load_settings(data_dir=str(tmp_path))
+    app = StringLabApp(settings, ExperimentStore(tmp_path / "experiments"), Prefs(tmp_path / "prefs.json", PREF_SCHEMA), None, pdf=False, sldc=False)
     options = server_mod.ServerOptions(token="verified-local-token", client_dir=Path(__file__).resolve().parents[1]/"dist",
                                       host="127.0.0.1", port=0,
                                       tools_web_dir=Path(__file__).resolve().parents[2]/"tools"/"web")
-    server = server_mod.LocalServer(App(), server_mod.Identity("stringlab", "StringLab"), build_router(), options)
+    server = server_mod.LocalServer(app, server_mod.Identity("stringlab", "StringLab"), build_router(), options)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -74,6 +70,7 @@ def test_real_local_server_authenticated_api(tmp_path):
             status = json.load(resp)
             assert status["ok"] is True
             assert "formats" in status["data"]
+            assert status["data"]["prefs"]["theme"] == "system"
         payload = json.dumps({"configuration": template("open"), "frames": 3}).encode()
         req = urllib.request.Request(f"{server.base_url}/api/series", method="POST", data=payload,
                                      headers={"Content-Type": "application/json", "X-SLAI-Stringlab": "1"})

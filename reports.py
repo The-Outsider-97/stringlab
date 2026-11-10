@@ -6,7 +6,7 @@ import io
 import json
 from pathlib import Path
 
-from .physics import validated, frame, series
+from .physics import validated, frame_at, series
 
 
 def csv_series(config: dict, count: int = 80) -> bytes:
@@ -23,7 +23,7 @@ def csv_series(config: dict, count: int = 80) -> bytes:
 def json_snapshot(config: dict, time: float = 0) -> bytes:
     c = validated(config)
     obj = {"format": "StringLab snapshot JSON (NOT SGEO)", "schema": 1,
-           "configuration": c, "frame": frame(c, time), "references": ["Tong 2009 sections 1.2-1.4",
+           "configuration": c, "frame": frame_at(c, time), "references": ["Tong 2009 sections 1.2-1.4",
            "Wray 2011 chapters 2-3"]}
     return json.dumps(obj, allow_nan=False, indent=2).encode("utf-8")
 
@@ -54,7 +54,7 @@ def pdf_report(raw: dict, title: str = "SLAI StringLab - Experiment Report") -> 
     from .physics import evaluate_actions
 
     c = validated(raw)
-    snapshot = frame(c, 0.)
+    snapshot = frame_at(c, 0.)
     on_shell = evaluate_actions(c, time_samples=32)
     digest = sha256(json.dumps(c, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
     pdf = io.BytesIO()
@@ -196,7 +196,7 @@ def sldc_report(raw: dict, title: str = "SLAI StringLab — Experiment Report") 
         raise ImportError("Native SLDC requires SLAI src.utils.sldc in the active checkout") from exc
     from .physics import evaluate_actions
     c = validated(raw)
-    f = frame(c, 0.)
+    f = frame_at(c, 0.)
     actions = evaluate_actions(c, time_samples=24)
     digest = sha256(json.dumps(c, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
     b = sldc.make_block

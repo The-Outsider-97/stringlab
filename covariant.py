@@ -13,21 +13,15 @@ from __future__ import annotations
 from math import pi
 from typing import Any
 import numpy as np
-from .physics import ModelError
+from .physics import ModelError, scalar, whole
 
 
 def _number(raw: dict, key: str, default: float, lo: float, hi: float) -> float:
-    x = raw.get(key, default)
-    if type(x) not in (float, int) or not np.isfinite(x) or not lo <= x <= hi:
-        raise ModelError(f"{key} must be finite and between {lo:g} and {hi:g}.")
-    return float(x)
+    return scalar(raw.get(key, default), key, lo, hi)
 
 
 def _integer(raw: dict, key: str, default: int, lo: int, hi: int) -> int:
-    x = raw.get(key, default)
-    if type(x) is not int or not lo <= x <= hi:
-        raise ModelError(f"{key} must be an integer in [{lo}, {hi}].")
-    return x
+    return whole(raw.get(key, default), key, lo, hi)
 
 
 def _derivatives(x: np.ndarray, dx: float, closed: bool) -> tuple[np.ndarray, np.ndarray]:

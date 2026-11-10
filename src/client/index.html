@@ -1,81 +1,20 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-skin="soft">
+<html lang="en" data-skin="soft">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SLAI StringLab · Computational String Physics</title>
-  <link rel="stylesheet" href="/tools/slai-ui.css"><link rel="stylesheet" href="/styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLAI StringLab · Computational string physics</title>
+  <link rel="icon" href="/assets/logo.png" type="image/png">
+  <link rel="stylesheet" href="/tools/slai-ui.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="startup/loader.css">
 </head>
 <body>
-<div class="app-shell">
-  <header class="topbar">
-    <div class="brand"><div class="symbol" aria-hidden="true">∿</div><div><strong>SLAI <span>StringLab</span></strong><small>COMPUTATIONAL STRING PHYSICS</small></div></div>
-    <div class="top-actions">
-      <button id="newBtn" class="light-button">＋ New</button><button id="saveBtn" class="light-button">Save</button>
-      <button id="openBtn" class="light-button">Library</button><button id="importBtn" class="light-button">Import</button><button id="exportBtn" class="light-button">Export ▾</button>
-      <button id="themeBtn" class="icon-button" title="Switch appearance" aria-label="Switch appearance">◐</button>
-      <span class="app-version">v0.6 · numerical research preview</span>
-    </div>
-  </header>
-  <div class="work-row">
-    <aside class="left-panel" aria-label="Experiment library"><div class="pane-heading"><span>EXPERIMENTS</span><small>12 workflows</small></div>
-      <div class="left-intro">Explore well-defined models with explicit mathematical boundaries.</div>
-      <div class="filter-row"><button class="filter active" id="allPresets">All models</button><button class="filter" id="classicalPresets">Classical</button><button class="filter" id="quantumPresets">Quantum</button></div>
-      <nav id="presetList" aria-label="Available experiments"></nav>
-      <div class="sidebar-note"><span class="status-dot"></span> Local computation <small>Mathematical models, not experimental proof.</small></div>
-    </aside>
-    <main class="center-panel">
-      <div class="viewport-top"><div><div class="eyebrow" id="experimentCategory">CLASSICAL FREE STRING</div><h1 id="experimentTitle">01 · Open string fundamental</h1><p id="experimentObjective">Explore transverse standing waves with Neumann boundary conditions.</p></div>
-        <span id="modelBadge" class="model-badge">ANALYTICAL MODEL</span></div>
-      <div class="viewport-wrap" id="viewportWrap">
-        <canvas id="sgeoViewport" aria-hidden="true"></canvas>
-        <canvas id="viewport" aria-label="Three-dimensional projected string simulation" tabindex="0"></canvas>
-        <div class="view-toolbar" role="toolbar" aria-label="Viewport actions"><button id="fitBtn" title="Fit to geometry">⌗ Fit</button><button id="orthoBtn" title="Toggle projection">◈ Ortho</button><button id="gridBtn" title="Toggle grid">▦ Grid</button><button id="worldsheetBtn" title="Show worldsheet">▤ Sheet</button><button id="nativeBtn" title="Load a verified native SGEO scene snapshot">◉ SGEO</button></div>
-        <div class="view-bottom"><div id="coordLabel" class="coordinate-tag">σ · X2 · X3</div><div class="camera-hint">DRAG orbit · SHIFT+DRAG pan · SCROLL zoom</div></div>
-        <div id="axisBadge" class="axis-badge" aria-hidden="true">Z<br><span>Y</span> · X</div>
-      </div>
-      <div class="transport">
-        <button id="restartBtn" class="icon-button" title="Restart">↺</button><button id="playBtn" class="play-button" title="Play/Pause">▶</button>
-        <button id="stepBtn" class="icon-button" title="Next frame">⏭</button><span id="timeValue" class="time-value">τ = 0.00</span>
-        <input id="timeline" type="range" min="0" max="79" step="1" value="0" aria-label="Simulation timeline">
-        <select id="playMode" class="tiny-select" aria-label="Playback behavior"><option value="loop">Loop</option><option value="pingpong">Ping-pong</option><option value="once">Once</option></select><select id="speedSelect" class="tiny-select" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1.0×</option><option value="2">2.0×</option><option value="4">4.0×</option><option value="8">8.0×</option><option value="16">16.0×</option><option value="32">32.0×</option></select>
-        <span class="frame-readout" id="frameInfo">FRAME 1 / 80</span>
-      </div>
-      <div class="lower-panel"><div class="panel-tabs" role="tablist" aria-label="Scientific workspace">
-        <button class="panel-tab active" data-tab="results">RESULTS</button><button class="panel-tab" data-tab="charts">CHARTS</button>
-        <button class="panel-tab" data-tab="math">MATHEMATICS</button><button class="panel-tab" data-tab="quantum">QUANTUM / T-DUALITY</button>
-        <button class="panel-tab" data-tab="analysis">SWEEPS & CONVERGENCE</button><button class="panel-tab" data-tab="compare">COMPARE</button><button class="panel-tab" data-tab="advanced">ADVANCED THEORY</button><button class="panel-tab" data-tab="dynamics">COVARIANT DYNAMICS</button>
-      </div><section id="panelContent" class="panel-body" aria-live="polite"></section></div>
-    </main>
-    <aside class="right-panel" aria-label="Simulation properties">
-      <div class="right-title"><div class="pane-heading"><span>SIMULATION SETTINGS</span></div><div class="right-sub">EDITABLE PARAMETERS</div></div>
-      <div class="properties-scroll"><div class="section-title">Model configuration <span>01</span></div>
-        <label class="field-line">String type<select id="kind"><option value="open">Open string</option><option value="closed">Closed string</option></select></label>
-        <label class="field-line">Endpoint conditions<select id="bc"><option value="NN">Neumann · Neumann</option><option value="DD">Dirichlet · Dirichlet</option><option value="ND">Neumann · Dirichlet</option><option value="DN">Dirichlet · Neumann</option></select></label>
-        <label class="field-line">Target spacetime dimensions <input type="number" id="dimensions" min="4" max="26" step="1"></label>
-        <div class="divider"></div><div class="section-title">Physical parameters <span>02</span></div>
-        <label class="field-line">Regge slope α′ <span class="unit">model length²</span><input type="number" id="alphaPrime" step="0.1" min="0.000001"></label>
-        <label class="field-line">Light-cone rate ∂τX⁺ <span class="unit">model length</span><input type="number" id="pPlus" step="0.1" min="0.001"></label>
-        <div class="readout-pair"><span>Tension T = 1 / 2πα′</span><strong id="tension">0.15915</strong></div>
-        <div class="divider"></div><div class="section-title">Modes <span>03</span><button id="addModeBtn" class="small-add">+ Add</button></div>
-        <div id="modeList" class="mode-list"></div>
-        <div class="divider"></div><div class="section-title">Solver & sampling <span>04</span></div>
-        <label class="field-line">Evolution method<select id="solver"><option value="analytical">Analytical Fourier modes</option><option value="finite_difference">Numerical leapfrog PDE</option></select></label>
-        <div class="two-fields"><label class="field-line">Samples<input type="number" id="points" step="16" min="32" max="4096"></label>
-          <label class="field-line">Δτ numerical<input type="number" id="dt" step="0.001" min="0.00001"></label></div>
-        <label class="field-line">Run duration τ <input type="number" id="duration" min="0.01" max="100" step="0.5"></label>
-        <div class="divider"></div><div class="section-title">Coordinate projection <span>05</span></div>
-        <div class="two-fields three-fields"><label class="field-line">Axis X<select id="proj0"></select></label><label class="field-line">Axis Y<select id="proj1"></select></label><label class="field-line">Axis Z<select id="proj2"></select></label></div>
-        <p class="projection-footnote" id="projectionHint">σ is a worldsheet coordinate, not a physical spatial dimension.</p>
-        <div class="divider"></div><div class="section-title">Endpoint positions <span>06</span></div>
-        <p class="minor">Fixed support positions for DD; constant base translation for other boundary types.</p>
-        <div class="two-fields"><label class="field-line">Start X1<input type="number" id="start1" step="0.25"></label><label class="field-line">End X1<input type="number" id="end1" step="0.25"></label></div>
-        <button id="recomputeBtn" class="primary-button">⟳ Recompute simulation</button>
-        <p id="errorBanner" class="error-banner" role="alert" hidden></p></div>
-    </aside>
+  <a class="skip" href="#stage">Skip to the 3D view</a>
+  <div id="app" class="app">
+    <noscript><p class="boot">StringLab needs JavaScript. It runs only from this local program.</p></noscript>
   </div>
-  <footer class="footer"><div><span class="status-dot"></span> <strong id="statusText">Ready to simulate</strong> <span class="footer-separator">/</span> <span id="validityText">Validation pending</span></div>
-    <div>LOCAL · <span id="modelTypeText">FLAT MINKOWSKI</span> <span class="footer-separator">/</span> <span id="outputTypeText">PROJECTED GEOMETRY</span></div></footer>
-</div>
-<div id="dialogHost" class="dialog-host" hidden><div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div class="dialog-header"><h2 id="dialogTitle">Dialog</h2><button id="dialogClose" class="icon-button">✕</button></div><div id="dialogBody"></div></div></div>
-<script type="module" src="/app.js"></script>
-</body></html>
+  <script src="startup/loader.js" data-name="StringLab" data-logo="/assets/logo.png" data-fallback="/assets/home.png"></script>
+  <script type="module" src="js/stringlab/src/client/main.js"></script>
+</body>
+</html>

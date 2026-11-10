@@ -1,58 +1,40 @@
-# Observed local verification evidence — 2026-11-09
+# Observed verification evidence — 2026-11-10 (v0.7)
 
-**Test environment**: Linux sandbox, CPython 3.13.5, NumPy and ReportLab installed; global TypeScript 5.8.x and Node 22. **This is not the user's Windows SLAI v2.4 checkout.** No assertion in this document implies that the real SLAI server, native SGEO runtime or SLAI agents have been executed here.
+**Environment**: Linux container, CPython 3.13, NumPy, ReportLab, Node 22 + TypeScript 5.x, Playwright Chromium on a **software** WebGL rasteriser (SwiftShader). The container holds a subset of the SLAI checkout (StringLab, `applications/tools`, `src/utils/{sgeo,sdrw,sldc}` and the agents that import). It is **not** the Windows checkout and has no GPU. Placeholder `applications/assets/{logo,home}.png` existed only in the container to avoid 404s; your checkout has the real ones.
 
-## Executed checks
-
-```text
-PYTHONPATH=/mnt/data python -m pytest /mnt/data/stringlab/tests -q
-ssss................................
-32 passed, 4 skipped
-```
-
-The four skipped tests require `src.utils.sgeo`, `src.utils.sdrw`, and `applications.tools.server` from a full SLAI v2.4 installation. A skip is neither a pass nor a failure. On a release workstation, all four are **mandatory** and must pass unskipped.
+## Executed, all passing
 
 ```text
-cd /mnt/data/stringlab && tsc -p tsconfig.build.json
-# Exit status: 0; generated dist/app.js
+python -m pytest applications/stringlab/tests -q          -> 111 passed (0 skipped)
+    99 solver / agent / export / storage / route tests
+    12 real-browser tests (tests/test_browser_client.py)
+npm test                  (applications/stringlab, tsx)   -> 36 passed
+npm run test:compiled     (applications/stringlab)        -> 36 passed
+npm test                  (applications/tools)            -> 38 passed (kit, shared 3D maths, start-up loader)
+npm run typecheck / npm run build                         -> clean
+python -m applications.stringlab --check                  -> SGEO, SDRW, SLDC, PDF, STEM, Simulation, Animation available
 ```
 
-A Chromium browser DOM-only smoke test succeeded with **no JavaScript errors** after loading the actual HTML/CSS/compiled JavaScript and providing computed results from the Python models through a mocked `fetch` implementation. It tested 12-preset rendering, initial curve/viewport, a closed-string preset, charts, quantum spectrum, T-duality, a parameter sweep, the export dialog and play/pause. Actual HTTP navigation to localhost was blocked by sandbox policy, so **no real local HTTP server or token-cookie authentication was tested by this exercise**.
+The 12 browser tests run the built client against a live server and **fail on any console error/warning, page error or HTTP ≥ 400**: boot with WebGL2; all 12 presets load and are scrubbed; a parameter edit recomputes; play/pause/step; orbit, wheel zoom, fit, view keys 1–4/0, vertex pick and PNG snapshot; toolbar toggles, all themes, all colour modes; all 9 tabs; the agents panel (STEM verification, unit conversion, Animation tracks, publish, animated `.sgeo` download, Simulation rollout); export/library/open/settings/help dialogs; save and reopen an experiment; the 2D canvas fallback (`?renderer=2d`); and a 700 px layout with drawers and no horizontal scroll.
 
-ReportLab generated a scientific PDF from the genuine analytical string model. `pypdf` parsed the PDF, and the first two pages were rasterized and manually inspected. This verifies basic formatting **in this environment**, not PDF interoperability in SLAI Writer or Documaster.
+Bugs found by this testing and fixed: the server refused to start from a fresh build (it checked for the retired `dist/app.js`); the off-screen drawer caused horizontal scroll at narrow widths; the transport bar wrapped at 1500 px; orbit inertia overshot after a slow release; the colour ramp used the array index as alpha; several null-child DOM errors.
 
-## Native-format status
+Screenshots were inspected by eye in light, dark and high-contrast themes, every tab, the worldsheet at mid-run with speed colouring, agent material-point rings, the 2D fallback and the narrow drawer. Pixels are not asserted by any test.
 
-The application code calls the inspected SLAI v2.4 public `SGEODocument` and `SDRWDocument` facade APIs, validates the output, and parses its own produced bytes. **Those operations have not been run here because the SLAI checkout is not mounted.** Only source-level signature matching and conditional executable tests were prepared.
+Native SGEO/SDRW/SLDC writers and readers ran for real here (their tests did not skip), so export → strict validation → re-read is observed in this container. A hand inspection in SPADRA/CADCon is still missing.
 
-## Required release evidence still missing
+## Not verified
 
-- Actual `python -m applications.stringlab --check` success from the Windows SLAI v2.4 installation.
-- Four native integration tests run without skips (including real authenticated local API).
-- SGEO and SDRW exported files opened independently by the installed SLAI code / SPADRA / CADCon.
-- Windows browser interaction check on supported resolutions and themes.
-- Windows solver and renderer benchmark with actual machine specs.
-- Optional model-facing SLAI agents: **not connected**, no agent test result.
+- Windows launch and Windows file paths; real GPU rendering and frame rates; WebM recording in a real browser (only the button's presence is exercised).
+- Verification and Provenance agents (not importable in the container), SLAI SharedMemory beyond publish/read-back, any agent behaviour on your checkout.
+- SPADRA after its `math3d.ts` became a re-export: its kit-level tests pass, but its own app was not rebuilt or run.
+- GitHub CI. The workflow in `.github/` was updated for the new build entry but has not run, and the Python tests need the SLAI `applications.tools` and `src` packages, so a standalone clone of this folder cannot pass them; treat CI as unverified.
 
-## v0.6 local verification — 2026-11-09 (separate from historical v0.4 checkpoint)
+## Run in your folder through the desktop link (2026-11-10, after the files were written back)
 
-```text
-PYTHONPATH=/mnt/data/stringlab_work python -m pytest /mnt/data/stringlab_work/stringlab/tests -q
-64 passed, 5 skipped
-```
+This was the Linux shell the desktop app provides over `G:\GAIA\AI\SLAI` (Python 3.10, NumPy 2.2.6, Node 22, global `tsc`); it is not your Windows venv. It has no pytest or Playwright, and the installed `node_modules` there are Windows builds (esbuild/tsx cannot run), so tests were compiled with `tsc` and run with `node --test`.
 
-Five conditional tests require the full SLAI checkout. Native SGEO extraction was also tested against an *in-memory fake facade*, which is a contract/unit test and **not** an executed canonical SLAI native round trip. A known FRW Nambu–Goto canonical momentum inversion bug was corrected and regression tested. Also checked flat nonlinear energy behavior, exact trivial solutions, FRW energy background-dependence, Polyakov constraint convergence, Dp DBI affine induced matrices, finite superstring/CFT/BRST/CY quantities and rejected pathological inputs.
-
-```text
-cd /mnt/data/stringlab_work/stringlab
-# tsc -p tsconfig.build.json
-# Exit status 0; dist/app.js and dist/sgeo_view.js generated
-```
-
-Chromium DOM-only smoke: actual app HTML/CSS/build JS, Python-generated initial classical and Polyakov trajectories mocked over Fetch (local HTTP navigation blocked), no JS page exceptions; verified 12 preset entries, dynamics panel simulation run, Loop/Ping-pong playback at 32×, advanced theory dropdown and timeline. Chromium's WebGL2 hardware context was unavailable in this sandbox. **Real WebGL2 hardware rendering, authenticated SLAI server, genuine native SGEO packages and Windows runtime are not verified**. The GPU code's TypeScript type checking is **not** evidence of GPU hardware behavior. These validations remain mandatory before production use.
-
-## Continuous integration correction (v0.6)
-
-The previous GitHub Python workflow ran bare `pytest` at the repository root, while tests imported the package name `stringlab` without including the checkout parent on the import path. This caused collection-time `ModuleNotFoundError`. Added `pytest.ini` with an explicit parent import path; confirmed **bare `pytest -q` from the repository root passes** (64 passed, 5 environment-dependent skipped).
-
-The old Conda workflow referred to a nonexistent `environment.yml`. It is now an explicit manually triggered compatibility check with a declared environment. The automatic workflow tests Python 3.11 and 3.13 on Ubuntu/Windows and independently builds the browser TypeScript assets using a standalone, cross-platform `npm run build`. CI execution on GitHub must still be checked after pushing this correction; a passing local run is not a CI status.
+- `python -m applications.stringlab --check`: StringLab 0.7.0; **SGEO, SDRW and SLDC adapters available** from your real checkout; **STEM, Simulation and Animation agents reported UNAVAILABLE** in that shell with `AttributeError: module 'colorama' has no attribute 'just_fix_windows_console'` (the shell's `colorama` is too old; the agents module needs a newer one). This is an environment issue that StringLab surfaces with its reason in the *SLAI agents* panel; check your Windows venv with the same `--check` command. In the container the same three agents were available.
+- `tsc` typecheck of StringLab and of SPADRA (with `math3d.ts` now a re-export): clean.
+- StringLab TypeScript tests: 36 passed. Shared kit and shared 3D maths tests: 32 passed (the start-up loader test needs to run in place, so it was not meaningful from a temp output folder).
+- Not run there: the Python suite, the browser tests, SPADRA's own tests, and anything on Windows or a GPU.

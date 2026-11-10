@@ -12,15 +12,36 @@ from copy import deepcopy
 from math import pi
 from typing import Any
 
+import re
+
 import numpy as np
+
+from applications.tools.errors import BadRequest
+from applications.tools.validation import integer as _checked_integer, number as _checked_number
 
 SCHEMA = 1
 MAX_POINTS = 4096
 MAX_MODES = 32
 MAX_STEPS = 30000
 
-class ModelError(ValueError):
-    """User-facing domain/configuration error."""
+class ModelError(BadRequest, ValueError):
+    """User-facing domain/configuration error. It is the shared 400 ``BadRequest``, so the server reports it without any wrapper."""
+
+
+def scalar(value: Any, label: str, low: float, high: float) -> float:
+    """A finite number in [low, high], checked by the shared validator (``applications.tools.validation.number``)."""
+    try:
+        return _checked_number(value, label, low, high)
+    except BadRequest as exc:
+        raise ModelError(exc.message) from exc
+
+
+def whole(value: Any, label: str, low: int, high: int) -> int:
+    """A whole number in [low, high], checked by the shared validator."""
+    try:
+        return _checked_integer(value, label, low, high)
+    except BadRequest as exc:
+        raise ModelError(exc.message) from exc
 
 
 def template(kind: str = "open") -> dict[str, Any]:
@@ -46,19 +67,32 @@ def template(kind: str = "open") -> dict[str, Any]:
     }
 
 
-def _scalar(value: Any, label: str, low: float, high: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (float, int)):
-        raise ModelError(f"{label}: expected a number.")
-    out = float(value)
-    if not np.isfinite(out) or not low <= out <= high:
-        raise ModelError(f"{label}: must be finite and between {low:g} and {high:g}.")
-    return out
+_scalar = scalar
+
+
+CONFIG_KEYS = frozenset({"schema", "kind", "theory", "description", "dimensions", "p_plus", "alpha_prime", "bc", "zero_velocity", "anchor_start",
+                         "anchor_end", "modes", "solver", "points", "dt", "duration", "projection", "display"})
+_COLOUR = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _display(raw: Any) -> dict[str, Any]:
+    """Presentation fields stored with an experiment, validated like everything else (an unknown key is dropped)."""
+    raw = raw if isinstance(raw, dict) else {}
+    colour = raw.get("color", "#48b4df")
+    return {"worldsheet": raw.get("worldsheet") is True, "grid": raw.get("grid", True) is not False,
+            "color": colour if isinstance(colour, str) and _COLOUR.fullmatch(colour) else "#48b4df"}
+
+
+def _time(value: Any, duration: float) -> float:
+    """A time in [0, duration]. A value a rounding error beyond the end (a solver step that overshot it) is accepted and clamped."""
+    return min(_scalar(value, "time", 0., duration * (1 + 1e-9) + 1e-12), duration)
 
 
 def validated(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ModelError("The experiment must be an object.")
-    c = deepcopy(raw)
+    # Only the keys of the model are kept: whatever else a file or request carries is dropped, never stored or echoed.
+    c = {key: deepcopy(value) for key, value in raw.items() if key in CONFIG_KEYS}
     if c.get("schema") != SCHEMA:
         raise ModelError(f"Expected experiment schema {SCHEMA}.")
     kind = c.get("kind")
@@ -118,7 +152,9 @@ def validated(raw: dict[str, Any]) -> dict[str, Any]:
     valid = ["σ", "X+", "X-"] + [f"X{i}" for i in range(1, axes + 1)]
     if not isinstance(projection, list) or len(projection) != 3 or len(set(projection)) != 3 or any(x not in valid for x in projection):
         raise ModelError(f"projection must contain three distinct coordinates from {valid}.")
-    # For 3D-geometry display, one always needs at least two transverse coordinates (D >= 4).
+    c["display"] = _display(c.get("display"))
+    description = c.get("description", "")
+    c["description"] = description[:200] if isinstance(description, str) else ""
     return c
 
 
@@ -237,7 +273,7 @@ def _project(c: dict[str, Any], tau: float, y: np.ndarray, xm: np.ndarray) -> li
 
 def frame(raw: dict[str, Any], tau: float, *, count: int | None = None) -> dict[str, Any]:
     c = validated(raw)
-    tau = _scalar(tau, "time", 0., c["duration"])
+    tau = _time(tau, c["duration"])
     if count is not None and (type(count) is not int or not 32 <= count <= MAX_POINTS):
         raise ModelError("Invalid sampling resolution.")
     sig = sigma_grid(c, count)
@@ -265,70 +301,106 @@ def laplacian(u: np.ndarray, dx: float, bc: str) -> np.ndarray:
     return out
 
 
-def fd_series(raw: dict[str, Any], times: list[float]) -> list[dict[str, Any]]:
-    """Central-difference leapfrog; fixed step CFL<=0.9, verified vs exact modes.
+class FDStepper:
+    """Central-difference leapfrog for the transverse wave equation (the one finite-difference implementation).
 
-    This advances the *transverse* free wave equation only. The 3D view uses
-    longitudinal reconstruction with numerical derivatives and reports that its
-    worldsheet constraints are approximate, not automatically physical.
+    ``fd_series`` and the Simulation Agent rollout in ``agents.py`` both advance a string with this class, so the solver exists once.
+    The state is the pair (previous, current) of grid arrays; a step advances both by ``dt``. The CFL number is kept at or below 0.9.
     """
-    c = validated(raw)
+
+    def __init__(self, raw: dict[str, Any]) -> None:
+        self.c = validated(raw)
+        c = self.c
+        self.sig = sigma_grid(c)
+        self.dx = float(self.sig[1] - self.sig[0])
+        self.dt = float(min(c["dt"], 0.9 * self.dx))
+        self.y0, self.v0, _ = transverse(c, self.sig, 0.)
+        self.bc = c["bc"]
+
+    def steps_for(self, time: float) -> int:
+        return int(round(time / self.dt))
+
+    def start(self) -> tuple[np.ndarray, np.ndarray]:
+        """(previous, current) at step 0; the previous level is a second-order Taylor step back."""
+        previous = self.y0 - self.dt * self.v0 + .5 * self.dt**2 * laplacian(self.y0, self.dx, self.bc)
+        if self.c["kind"] == "open":
+            if self.bc[0] == "D": previous[0] = self.y0[0]
+            if self.bc[1] == "D": previous[-1] = self.y0[-1]
+        return previous, self.y0.copy()
+
+    def advance(self, previous: np.ndarray, current: np.ndarray, steps: int = 1) -> tuple[np.ndarray, np.ndarray]:
+        for index in range(steps):
+            following = 2 * current - previous + self.dt**2 * laplacian(current, self.dx, self.bc)
+            if self.c["kind"] == "open":
+                if self.bc[0] == "D": following[0] = self.y0[0]
+                if self.bc[1] == "D": following[-1] = self.y0[-1]
+            previous, current = current, following
+            if not np.isfinite(current).all():
+                raise ModelError(f"Numerical instability detected after {index + 1} step(s).")
+        return previous, current
+
+    def observe(self, step: int, previous: np.ndarray, current: np.ndarray) -> dict[str, Any]:
+        """The frame for the state at ``step`` (time = step*dt), with diagnostics against the analytical solution."""
+        c, dt, dx = self.c, self.dt, self.dx
+        # Backward velocity corrected by +dt*a/2, second-order accurate.
+        v = (current - previous) / dt + .5 * dt * laplacian(current, dx, self.bc)
+        vs = ((np.roll(current, -1, axis=0) - np.roll(current, 1, axis=0)) / (2 * dx)
+              if c["kind"] == "closed" else np.gradient(current, dx, axis=0, edge_order=2))
+        if c["kind"] == "open":
+            if self.bc[0] == "N": vs[0] = 0.
+            if self.bc[1] == "N": vs[-1] = 0.
+        time = step * dt
+        info = _reconstruct(c, self.sig, time, current, v, vs)
+        exact, _, _ = transverse(c, self.sig, time)
+        rms = float(np.sqrt(np.mean((current - exact)**2)))
+        return {"time": float(time), "solver": "finite_difference",
+                "geometry": _project(c, time, current, info["xminus"]),
+                "projection": c["projection"], "closed": c["kind"] == "closed",
+                "status": "numerical_approximation_not_certified",
+                "projection_kind": "parameter_space_diagram" if "σ" in c["projection"] else "target_space_coordinate_projection",
+                "diagnostics": {"energy": info["energy"], "rms_error_vs_analytical": rms,
+                                "level_matching_residual": info["level_matching_residual"],
+                                "cfl": float(dt / dx), "effective_dt": float(dt),
+                                "constraint_status": "approximate_numerical"},
+                "samples": len(self.sig)}
+
+
+def fd_series(raw: dict[str, Any], times: list[float]) -> list[dict[str, Any]]:
+    """FD frames at the requested times (each rounded to the nearest solver step; ``requested_time`` keeps what was asked).
+
+    This advances the *transverse* free wave equation only. The 3D view uses longitudinal reconstruction with numerical
+    derivatives and reports that its worldsheet constraints are approximate, not automatically physical.
+    """
+    stepper = FDStepper(raw)
+    c = stepper.c
     if not isinstance(times, list) or not 1 <= len(times) <= 360:
         raise ModelError("Request between 1 and 360 output times.")
-    times = [_scalar(t, "time", 0., c["duration"]) for t in times]
-    sig = sigma_grid(c)
-    dx = sig[1] - sig[0]
-    dt = min(c["dt"], 0.9 * dx)
-    max_index = int(round(max(times) / dt))
+    times = [_time(t, c["duration"]) for t in times]
+    max_index = stepper.steps_for(max(times))
     if max_index > MAX_STEPS:
         raise ModelError(f"Numerical run needs {max_index} steps; reduce duration or increase dt. Limit: {MAX_STEPS}.")
-    if c["kind"] == "open" and c["bc"] == "DD":
-        # Time-independent static boundary profile needs no special treatment.
-        pass
-    y0, v0, _ = transverse(c, sig, 0.)
-    previous = y0 - dt * v0 + .5 * dt**2 * laplacian(y0, dx, c["bc"])
-    if c["kind"] == "open":
-        if c["bc"][0] == "D": previous[0] = y0[0]
-        if c["bc"][1] == "D": previous[-1] = y0[-1]
-    current = y0.copy()
     requested: dict[int, list[int]] = {}
     for pos, t in enumerate(times):
-        requested.setdefault(int(round(t / dt)), []).append(pos)
+        requested.setdefault(stepper.steps_for(t), []).append(pos)
     outputs: list[dict[str, Any] | None] = [None] * len(times)
-    for step in range(max_index + 1):
-        if step in requested:
-            # Backward velocity corrected by +dt*a/2, second-order accurate.
-            v = (current - previous) / dt + .5 * dt * laplacian(current, dx, c["bc"])
-            vs = ((np.roll(current, -1, axis=0) - np.roll(current, 1, axis=0)) / (2 * dx)
-                  if c["kind"] == "closed" else np.gradient(current, dx, axis=0, edge_order=2))
-            if c["kind"] == "open":
-                if c["bc"][0] == "N": vs[0] = 0.
-                if c["bc"][1] == "N": vs[-1] = 0.
-            info = _reconstruct(c, sig, step * dt, current, v, vs)
-            exact, _, _ = transverse(c, sig, step * dt)
-            rms = float(np.sqrt(np.mean((current - exact)**2)))
-            for pos in requested[step]:
-                outputs[pos] = {"time": float(step * dt), "solver": "finite_difference",
-                                "geometry": _project(c, step * dt, current, info["xminus"]),
-                                "projection": c["projection"], "closed": c["kind"] == "closed",
-                                "status": "numerical_approximation_not_certified",
-                                "projection_kind": "parameter_space_diagram" if "σ" in c["projection"] else "target_space_coordinate_projection",
-                                "diagnostics": {"energy": info["energy"],
-                                                "rms_error_vs_analytical": rms,
-                                                "level_matching_residual": info["level_matching_residual"],
-                                                "cfl": float(dt / dx), "effective_dt": float(dt),
-                                                "constraint_status": "approximate_numerical"},
-                                "samples": len(sig)}
-        if step == max_index:
-            break
-        following = 2 * current - previous + dt**2 * laplacian(current, dx, c["bc"])
-        if c["kind"] == "open":
-            if c["bc"][0] == "D": following[0] = y0[0]
-            if c["bc"][1] == "D": following[-1] = y0[-1]
-        previous, current = current, following
-        if not np.isfinite(current).all():
-            raise ModelError(f"Numerical instability detected at step {step}.")
+    previous, current = stepper.start()
+    done = 0
+    for step in sorted(requested):
+        previous, current = stepper.advance(previous, current, step - done)
+        done = step
+        out = stepper.observe(step, previous, current)
+        for pos in requested[step]:
+            outputs[pos] = {**out, "requested_time": times[pos]}
     return [x for x in outputs if x is not None]
+
+
+def frame_at(raw: dict[str, Any], tau: float) -> dict[str, Any]:
+    """One frame from the solver the experiment selects (analytical or finite difference), so a viewer, an export and a
+    report built from the same experiment can never disagree about which solver produced the geometry."""
+    c = validated(raw)
+    if c["solver"] == "finite_difference":
+        return fd_series(c, [_time(tau, c["duration"])])[0]
+    return frame(c, tau)
 
 
 def series(raw: dict[str, Any], steps: int = 100) -> list[dict[str, Any]]:
@@ -357,8 +429,9 @@ def convergence(raw: dict[str, Any], target_time: float | None = None) -> list[d
 
 def sweep(raw: dict[str, Any], amplitude_start: float, amplitude_end: float, steps: int) -> list[dict[str, float | str]]:
     c = validated(raw)
-    if not c["modes"]:
-        raise ModelError("Sweep requires at least one mode.")
+    enabled = [i for i, m in enumerate(c["modes"]) if m["enabled"]]
+    if not enabled:
+        raise ModelError("Sweep requires at least one enabled mode.")
     if not isinstance(steps, int) or not 2 <= steps <= 80:
         raise ModelError("Sweep steps must be from 2 to 80.")
     start = _scalar(amplitude_start, "sweep start", -5., 5.)
@@ -367,7 +440,7 @@ def sweep(raw: dict[str, Any], amplitude_start: float, amplitude_end: float, ste
     key = "amplitude" if c["kind"] == "open" else "left"
     for value in np.linspace(start, stop, steps):
         x = deepcopy(c)
-        x["modes"][0][key] = float(value)
+        x["modes"][enabled[0]][key] = float(value)
         f = frame(x, 0.)
         result.append({"amplitude": float(value), "energy": f["diagnostics"]["energy"],
                        "constraint_residual": f["diagnostics"]["level_matching_residual"],

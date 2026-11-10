@@ -2,18 +2,15 @@
 from __future__ import annotations
 
 import json
-import re
 import threading
-from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+
+from applications.tools.errors import Conflict, NotFound
+from applications.tools.validation import new_id, record_id, text, utc_now
 
 from .physics import ModelError, validated
 from .quantum import spectrum
 from .covariant import _number, _integer
-
-_ID = re.compile(r"^[0-9a-f]{32}$")
-
 
 def _validated_numerical(raw: object) -> dict | None:
     """Validate a saved numerical solver request without re-running the PDE on disk I/O."""
@@ -55,9 +52,7 @@ class ExperimentStore:
         self.lock = threading.RLock()
 
     def _path(self, uid: str) -> Path:
-        if not isinstance(uid, str) or not _ID.fullmatch(uid):
-            raise ModelError("Invalid experiment identifier.")
-        return self.root / (uid + ".json")
+        return self.root / (record_id(uid, "Experiment identifier") + ".json")
 
     def save(self, payload: dict) -> dict:
         from applications.tools.storage import atomic_write_json
@@ -68,10 +63,8 @@ class ExperimentStore:
         if quantum is not None:
             spectrum(quantum)  # validates full finite oscillator configuration; do not silently alter it.
         numerical = _validated_numerical(payload.get("numerical"))
-        title = payload.get("title", "Untitled experiment")
-        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120 or any(ord(ch) < 32 for ch in title):
-            raise ModelError("Title must contain 1–120 printable characters.")
-        uid = payload.get("id") or uuid4().hex
+        title = text(payload.get("title", "Untitled experiment"), "Title", 120)
+        uid = payload.get("id") or new_id()
         target = self._path(uid)
         with self.lock:
             previous = None
@@ -82,10 +75,10 @@ class ExperimentStore:
                     raise ModelError("Stored experiment is unreadable; it was not overwritten.") from exc
             expected = payload.get("expected_revision", 0)
             if type(expected) is not int or expected < 0 or (previous or {}).get("revision", 0) != expected:
-                raise ModelError("Revision conflict. Reload before saving to avoid overwriting a newer experiment.")
-            result = {"id": uid, "schema": 1, "title": title.strip(), "revision": expected + 1,
-                      "created_utc": (previous or {}).get("created_utc") or _now(),
-                      "updated_utc": _now(), "configuration": c, "quantum": quantum, "numerical": numerical,
+                raise Conflict("Revision conflict.", hint="Reload before saving to avoid overwriting a newer experiment.")
+            result = {"id": uid, "schema": 1, "title": title, "revision": expected + 1,
+                      "created_utc": (previous or {}).get("created_utc") or utc_now(),
+                      "updated_utc": utc_now(), "configuration": c, "quantum": quantum, "numerical": numerical,
                       "provenance": {"engine": "stringlab.physics", "engine_schema": 1,
                                      "category": "covariant or nonlinear numerical PDE" if numerical else "classical analytical/numerical reduced light-cone model",
                                      "references": ["Tong2009:1.2-1.4", "Wray2011:2-3"]}}
@@ -96,7 +89,7 @@ class ExperimentStore:
         with self.lock:
             path = self._path(uid)
             if not path.is_file():
-                raise ModelError("Experiment not found.")
+                raise NotFound("Experiment not found.")
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 validated(data["configuration"])
@@ -113,7 +106,7 @@ class ExperimentStore:
             for path in self.root.glob("*.json"):
                 try:
                     item = self.read(path.stem)
-                except ModelError:
+                except (ModelError, NotFound):
                     continue
                 items.append({k: item[k] for k in ("id", "title", "revision", "updated_utc")})
             return sorted(items, key=lambda x: x["updated_utc"], reverse=True)
@@ -123,7 +116,3 @@ class ExperimentStore:
             path = self._path(uid)
             if path.exists():
                 path.unlink()
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()

@@ -1,5 +1,4 @@
-stringlab:
-  default_port: 8776
-  default_model: classical_free_bosonic
-  storage_schema: 1
-  external_ai_required: false
+# StringLab configuration (read through SLAI's ConfigRepository). Command-line options win over this file.
+app:
+  port: 8776
+  max_request_bytes: 8388608
