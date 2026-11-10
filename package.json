@@ -10,7 +10,10 @@
     "test": "tsx --test tests_ts/*.test.ts",
     "test:compiled": "tsc -p tsconfig.test.json && node --test .test-out/stringlab/tests_ts/*.test.js",
     "test:py": "python3 -m pytest tests -q",
-    "start": "npm run build && python3 -m applications.stringlab"
+    "start": "npm run build && python3 -m applications.stringlab",
+    "desktop:dev": "npm run build && python desktop/make_icons.py && npx --yes @tauri-apps/cli@2 dev",
+    "desktop:build": "npm run build && python desktop/make_icons.py && python desktop/build_backend.py && npx --yes @tauri-apps/cli@2 build",
+    "desktop:check": "python -m pytest desktop/tests -q"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

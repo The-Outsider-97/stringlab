@@ -1,0 +1,12 @@
+{
+  "bundle": {
+    "resources": {
+      "../desktop/backend-dist/stringlab-backend/": "backend/"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

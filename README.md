@@ -1,5 +1,10 @@
 # SLAI StringLab — scientific computing application (v0.7)
 
+## Installable Windows application (Tauri 2)
+
+StringLab now includes a **Tauri 2 desktop host** that starts the unchanged local SLAI Python service automatically in a native Windows WebView2 window. Development uses the SLAI venv; release uses a PyInstaller-bundled Python runtime. Source-level integration is provided; a Windows installer is **not yet verified or signed**. See [docs/TAURI_DESKTOP.md](docs/TAURI_DESKTOP.md) for build instructions, security model and release acceptance tests.
+
+
 **A real, locally computed research-support application with multiple bounded classical and quantum model solvers—not a complete string-theory simulator.** It uses analytical free-bosonic light-cone string equations, a numerical transverse wave solver, a finite critical-bosonic Fock-spectrum calculator, and 3D projections. A model is classified *physical in the restricted classical setup* only when the checked constraints permit that description. Its results are **not experimental confirmation of string theory**.
 
 > **Status notice (2026-11-10)**: the Python solvers, the SLAI integrations (SGEO/SDRW/SLDC facades, STEM, Simulation and Animation agents, SharedMemory) and the rewritten TypeScript client were verified in a Linux container that holds a subset of the SLAI checkout: 111 Python tests (including 12 real-Chromium tests of the built client with zero tolerated console errors), 36 StringLab TypeScript tests and 38 shared-kit tests all pass, with no skips. **Not yet run on your Windows machine**: the Windows launch, a real GPU (the container used a software WebGL rasteriser), the Verification and Provenance agents (not importable in the container) and a SPADRA/CADCon round trip of exported files. `docs/TEST_RESULTS.md` has the exact evidence and `docs/INTEGRATION.md` the checklist for your checkout.
