@@ -6,6 +6,7 @@ repository, the schema-checked preferences file and the default data folder.
 from __future__ import annotations
 
 import argparse
+import os
 import secrets
 import sys
 from dataclasses import dataclass
@@ -145,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         app = StringLabApp(settings, ExperimentStore(settings.data_dir / "experiments"),
                            Prefs(settings.data_dir / "prefs.json", PREF_SCHEMA), root, pdf=pdf, sldc=bool(slai.sldc_info()["available"]))
         from .routes import build_router
-        options = ServerOptions(token=args.token or secrets.token_urlsafe(32), client_dir=client_dir, host=args.host, port=settings.port,
+        options = ServerOptions(token=args.token or os.environ.get("STRINGLAB_TAURI_TOKEN") or secrets.token_urlsafe(32), client_dir=client_dir, host=args.host, port=settings.port,
                                 tools_web_dir=slai.applications_dir() / "tools" / "web",
                                 asset_dirs=(HERE / "assets", slai.shared_assets_dir()), max_body_bytes=settings.max_request_bytes)
         server = LocalServer(app, Identity(SLUG, TITLE), build_router(), options)

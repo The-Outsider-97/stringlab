@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# StringLab Tauri 2 / PyInstaller generated output
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/
+desktop/backend-dist/
+desktop/.build/

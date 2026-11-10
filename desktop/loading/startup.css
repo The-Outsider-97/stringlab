@@ -1,0 +1,13 @@
+:root { color-scheme:dark; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+* { box-sizing:border-box; }
+body { min-height:100vh; margin:0; color:#e7f3ff; background:radial-gradient(ellipse at 50% 30%,#17364a,#090f19 72%); display:grid; place-items:center; }
+.launch { text-align:center; width:min(90vw,640px); padding:38px; }
+.mark { margin:auto; width:72px; height:72px; display:grid;place-items:center; border:1px solid #4c8fbc; border-radius:24px; font-size:54px;color:#58b0e3; box-shadow:0 16px 60px #0005; }
+h1 { letter-spacing:.05em; font-size:32px; font-weight:650; margin:24px 0 0; }
+h1 span { color:#60b7e9; }
+.subhead { letter-spacing:.17em; color:#86a4bc; text-transform:uppercase; font-size:11px; margin:12px 0 40px; }
+.spinner { margin:0 auto 24px; width:24px;height:24px;border:2px solid #2d4d64;border-top-color:#6fc6fc;border-radius:50%; animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#message { font-size:14px; color:#b5cddd; }
+.error { text-align:left; max-height:30vh;overflow:auto; padding:16px; border:1px solid #a95261; border-radius:10px; color:#ffe0e4; background:#451e2a88; font-size:13px; white-space:pre-wrap; }
+@media(prefers-reduced-motion:reduce) { .spinner { animation:none; } }

@@ -1,0 +1,69 @@
+name: Build StringLab Tauri Windows installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - "desktop/**"
+      - "package.json"
+      - "app.py"
+      - ".github/workflows/tauri-windows.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out SLAI shared tools and native formats
+        uses: actions/checkout@v4
+        with:
+          repository: The-Outsider-97/SLAI
+          ref: SLAI-v.2.4
+          path: slai
+      - name: Check out StringLab
+        uses: actions/checkout@v4
+        with:
+          path: stringlab-source
+      - name: Assemble the real application directory
+        shell: pwsh
+        run: |
+          if (Test-Path slai/applications/stringlab) {
+            Remove-Item slai/applications/stringlab -Recurse -Force
+          }
+          Copy-Item stringlab-source slai/applications/stringlab -Recurse
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install scientific and packaging dependencies
+        shell: pwsh
+        working-directory: slai
+        run: |
+          python -m pip install -r applications/stringlab/requirements.txt
+          python -m pip install 'pyinstaller>=6,<7' pytest
+      - name: Build frontend and test desktop packaging contracts
+        shell: pwsh
+        working-directory: slai/applications/stringlab
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          python -m pytest desktop/tests -q
+          python -m pytest tests -q --ignore=tests/test_browser_client.py
+      - name: Build signed-ready (unsigned) Windows installer
+        shell: pwsh
+        working-directory: slai/applications/stringlab
+        run: npm run desktop:build
+      - name: Upload unsigned NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: slai-stringlab-windows-unsigned
+          path: slai/applications/stringlab/src-tauri/target/release/bundle/nsis/*setup.exe
+          if-no-files-found: error
